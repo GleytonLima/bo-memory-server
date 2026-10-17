@@ -2,9 +2,11 @@ package api
 
 import (
 	"net/http"
+	"strings"
 
 	"bo-memory-server/internal/auth"
 	"bo-memory-server/internal/memory"
+	"bo-memory-server/internal/sso"
 	"bo-memory-server/internal/web"
 )
 
@@ -13,12 +15,14 @@ type Server struct {
 	memory *memory.Store
 }
 
-// Handler monta as rotas: /healthz e a web sem autenticação; /v1/* exige token.
-func Handler(authStore *auth.Store, memStore *memory.Store, webDir string) http.Handler {
+// Handler monta as rotas: /healthz, /auth/* (SSO) e a web sem autenticação; /v1/* exige token.
+// `flow` é nil quando não há SSO configurado.
+func Handler(authStore *auth.Store, memStore *memory.Store, webDir string, flow *sso.Flow) http.Handler {
 	s := &Server{auth: authStore, memory: memStore}
 	v1 := http.NewServeMux()
 
 	v1.HandleFunc("GET /v1/me", s.me)
+	v1.HandleFunc("POST /v1/logout", s.logout)
 	v1.HandleFunc("POST /v1/sync/pull", s.pull)
 	v1.HandleFunc("POST /v1/sync/push", s.push)
 
@@ -44,6 +48,17 @@ func Handler(authStore *auth.Store, memStore *memory.Store, webDir string) http.
 
 	root := http.NewServeMux()
 	root.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { writeJSON(w, 200, map[string]bool{"ok": true}) })
+	root.HandleFunc("GET /auth/config", func(w http.ResponseWriter, _ *http.Request) {
+		cfg := map[string]any{"sso": flow != nil, "personalTokens": authStore.PersonalTokens}
+		if flow != nil {
+			cfg["provider"] = flow.ProviderName()
+		}
+		writeJSON(w, http.StatusOK, cfg)
+	})
+	if flow != nil {
+		root.HandleFunc("GET /auth/login", flow.Login)
+		root.HandleFunc("GET /auth/callback", flow.Callback)
+	}
 	root.Handle("/v1/", auth.Middleware(authStore, v1))
 	root.Handle("/", web.Handler(webDir))
 	return root
@@ -51,4 +66,14 @@ func Handler(authStore *auth.Store, memStore *memory.Store, webDir string) http.
 
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, auth.UserFrom(r.Context()))
+}
+
+// logout revoga o token usado nesta chamada (a sessão SSO, tipicamente).
+func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
+	token, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if err := s.auth.RevokeByValue(r.Context(), strings.TrimSpace(token)); err != nil {
+		fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

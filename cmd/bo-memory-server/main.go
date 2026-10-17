@@ -21,6 +21,7 @@ import (
 	"bo-memory-server/internal/config"
 	"bo-memory-server/internal/db"
 	"bo-memory-server/internal/memory"
+	"bo-memory-server/internal/sso"
 )
 
 func main() {
@@ -40,7 +41,18 @@ func main() {
 	switch cmd {
 	case "serve":
 		must(db.Migrate(ctx, pool, "up"))
-		serve(ctx, cfg, api.Handler(auth.NewStore(pool), memory.NewStore(pool), cfg.WebDir))
+		users := auth.NewStore(pool)
+		users.PersonalTokens = os.Getenv("BO_PERSONAL_TOKENS") != "false"
+		var flow *sso.Flow
+		if sc := sso.LoadConfig(); sc.Enabled() {
+			flow, err = sso.New(ctx, sc, pool, users)
+			must(err)
+			log.Printf("SSO: %s (%s), sessões de %s", sc.ProviderName, sc.Issuer, sc.SessionTTL)
+		}
+		if !users.PersonalTokens {
+			log.Printf("tokens pessoais desligados (BO_PERSONAL_TOKENS=false): só sessões SSO")
+		}
+		serve(ctx, cfg, api.Handler(users, memory.NewStore(pool), cfg.WebDir, flow))
 	case "migrate":
 		if len(args) == 0 {
 			log.Fatal("uso: bo-memory-server migrate up|down|reset|status")

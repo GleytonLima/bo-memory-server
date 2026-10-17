@@ -47,7 +47,7 @@ func TestAPIFlow(t *testing.T) {
 	authStore := auth.NewStore(pool)
 	admin, _ := authStore.CreateUser(ctx, "Admin", "admin@x.com", true)
 	adminToken, _, _ := authStore.CreateToken(ctx, admin.ID, "cli")
-	srv := httptest.NewServer(api.Handler(authStore, memory.NewStore(pool), t.TempDir()))
+	srv := httptest.NewServer(api.Handler(authStore, memory.NewStore(pool), t.TempDir(), nil))
 	defer srv.Close()
 
 	anon := client{t, srv.URL, ""}

@@ -13,10 +13,12 @@ import (
 var ErrInvalidToken = errors.New("token inválido ou revogado")
 
 type User struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Email   string `json:"email"`
-	IsAdmin bool   `json:"isAdmin"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Email      string `json:"email"`
+	IsAdmin    bool   `json:"isAdmin"`
+	EmployeeID string `json:"employeeId,omitempty"`
+	SSO        bool   `json:"sso"` // vinculado ao provedor de identidade
 }
 
 type Token struct {
@@ -24,14 +26,28 @@ type Token struct {
 	UserID     string     `json:"userId"`
 	UserName   string     `json:"userName"`
 	Name       string     `json:"name"`
+	Kind       string     `json:"kind"` // personal | session
 	CreatedAt  time.Time  `json:"createdAt"`
+	ExpiresAt  *time.Time `json:"expiresAt"`
 	LastUsedAt *time.Time `json:"lastUsedAt"`
 	RevokedAt  *time.Time `json:"revokedAt"`
 }
 
-type Store struct{ pool *pgxpool.Pool }
+type Store struct {
+	pool *pgxpool.Pool
+	// PersonalTokens: tokens pessoais valem (padrão). Com SSO adotado, pode-se exigir só sessões SSO.
+	PersonalTokens bool
+}
 
-func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
+func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool, PersonalTokens: true} }
+
+const userCols = `u.id, u.name, u.email, u.is_admin, coalesce(u.employee_id, ''), u.sso_subject IS NOT NULL`
+
+func scanUser(row pgx.Row) (User, error) {
+	var u User
+	err := row.Scan(&u.ID, &u.Name, &u.Email, &u.IsAdmin, &u.EmployeeID, &u.SSO)
+	return u, err
+}
 
 func (s *Store) CreateUser(ctx context.Context, name, email string, admin bool) (User, error) {
 	name, email = strings.TrimSpace(name), strings.ToLower(strings.TrimSpace(email))
@@ -44,21 +60,15 @@ func (s *Store) CreateUser(ctx context.Context, name, email string, admin bool) 
 }
 
 func (s *Store) UserByEmail(ctx context.Context, email string) (User, error) {
-	var u User
-	err := s.pool.QueryRow(ctx, `SELECT id, name, email, is_admin FROM users WHERE email = $1`, strings.ToLower(email)).
-		Scan(&u.ID, &u.Name, &u.Email, &u.IsAdmin)
-	return u, err
+	return scanUser(s.pool.QueryRow(ctx, `SELECT `+userCols+` FROM users u WHERE u.email = $1`, strings.ToLower(email)))
 }
 
 func (s *Store) ListUsers(ctx context.Context) ([]User, error) {
-	rows, err := s.pool.Query(ctx, `SELECT id, name, email, is_admin FROM users WHERE NOT disabled ORDER BY name`)
+	rows, err := s.pool.Query(ctx, `SELECT `+userCols+` FROM users u WHERE NOT u.disabled ORDER BY u.name`)
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (User, error) {
-		var u User
-		return u, r.Scan(&u.ID, &u.Name, &u.Email, &u.IsAdmin)
-	})
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (User, error) { return scanUser(r) })
 }
 
 // CreateToken emite um token para o usuário; o valor só existe neste retorno.
@@ -71,14 +81,14 @@ func (s *Store) CreateToken(ctx context.Context, userID, name string) (token str
 	return token, id, err
 }
 
-// UserByToken valida o token (não revogado, usuário ativo) e registra o uso.
+// UserByToken valida o token (não revogado, não expirado, do tipo aceito, usuário ativo) e registra o uso.
 func (s *Store) UserByToken(ctx context.Context, token string) (User, error) {
-	var u User
-	err := s.pool.QueryRow(ctx, `
+	u, err := scanUser(s.pool.QueryRow(ctx, `
 		UPDATE tokens t SET last_used_at = now()
 		FROM users u
-		WHERE t.hash = $1 AND t.revoked_at IS NULL AND u.id = t.user_id AND NOT u.disabled
-		RETURNING u.id, u.name, u.email, u.is_admin`, Hash(token)).Scan(&u.ID, &u.Name, &u.Email, &u.IsAdmin)
+		WHERE t.hash = $1 AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR t.expires_at > now())
+			AND ($2 OR t.kind = 'session') AND u.id = t.user_id AND NOT u.disabled
+		RETURNING `+userCols, Hash(token), s.PersonalTokens))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, ErrInvalidToken
 	}
@@ -88,7 +98,7 @@ func (s *Store) UserByToken(ctx context.Context, token string) (User, error) {
 // ListTokens: de um usuário, ou de todos quando userID == "".
 func (s *Store) ListTokens(ctx context.Context, userID string) ([]Token, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT t.id, t.user_id, u.name, t.name, t.created_at, t.last_used_at, t.revoked_at
+		SELECT t.id, t.user_id, u.name, t.name, t.kind, t.created_at, t.expires_at, t.last_used_at, t.revoked_at
 		FROM tokens t JOIN users u ON u.id = t.user_id
 		WHERE $1 = '' OR t.user_id::text = $1
 		ORDER BY t.created_at DESC`, userID)
@@ -97,7 +107,7 @@ func (s *Store) ListTokens(ctx context.Context, userID string) ([]Token, error) 
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Token, error) {
 		var t Token
-		return t, r.Scan(&t.ID, &t.UserID, &t.UserName, &t.Name, &t.CreatedAt, &t.LastUsedAt, &t.RevokedAt)
+		return t, r.Scan(&t.ID, &t.UserID, &t.UserName, &t.Name, &t.Kind, &t.CreatedAt, &t.ExpiresAt, &t.LastUsedAt, &t.RevokedAt)
 	})
 }
 

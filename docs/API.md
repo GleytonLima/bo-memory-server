@@ -17,6 +17,17 @@ Mudou o contrato? Atualize este arquivo primeiro.
 
 ## Autenticação
 
+- **SSO (OpenID Connect)** — Entra ID, Google Workspace, Okta, Keycloak… Configuração em
+  [SSO.md](SSO.md). O servidor faz o login (`GET /auth/login?return=/` → provedor →
+  `GET /auth/callback`) e devolve à web uma **sessão** (`bos_…`, expira; padrão 12 h) no fragmento
+  da URL: `/#sso=<sessão>` (ou `/#sso-error=<mensagem>`). `GET /auth/config` (sem auth) diz
+  `{ sso, provider, personalTokens }`; `POST /v1/logout` revoga o token em uso.
+- **Tokens pessoais** (`bom_…`, sem validade): continuam para scripts, CI e o desktop.
+  `BO_PERSONAL_TOKENS=false` faz o servidor aceitar só sessões SSO.
+- **Membros por projeto**: cada workspace pode ter uma lista de e-mails ou domínios
+  (`*@empresa.com`). Com lista, só membros (e admins) leem, sincronizam e escrevem nele; sem
+  lista, é aberto a todos. No pull, workspaces de que você não é membro são ignorados; no push,
+  a mudança volta como `error`; nas rotas da web, `403`. Globais e pastas não mudam.
 - Todo request (exceto `GET /healthz` e os arquivos estáticos da web) usa `Authorization: Bearer <token>`.
 - **Token por dev.** O servidor guarda só o hash (SHA-256). Um token pertence a um usuário; usuários `admin` gerenciam usuários e tokens.
 - Primeiro acesso: `bo-memory-server admin create --name "Fulano" --email f@x` imprime um token de admin (uma única vez).
@@ -162,6 +173,9 @@ O cliente marca a memória como **em conflito**, mostra as duas versões e o usu
 | `GET` | `/v1/memories/{id}/links` | `{ outgoing, incoming, impact }`: itens `{ id, type?, depth?, via?, memory }` (`memory` null se apagada) |
 | `POST` | `/v1/memories/review` | `{ ids, reason, source }` marca "a revisar" → `{ results }` (um por id, como no push) |
 | `GET/POST/DELETE` | `/v1/users`, `/v1/tokens` | administração (admin) |
+| `GET/PUT` | `/v1/workspaces/{key}/members` | membros do workspace (admin): `{ members: ["ana@x.com", "*@x.com"] }`; vazio = aberto |
+| `POST` | `/v1/logout` | revoga o token em uso (sair) |
+| `GET` | `/auth/config`, `/auth/login`, `/auth/callback` | SSO (sem auth; ver acima) |
 
 Erros: `{ "error": "mensagem em português" }` com `400` validação, `401`, `403`, `404`, `409` conflito.
 

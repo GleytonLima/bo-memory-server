@@ -77,12 +77,14 @@ func (s *Store) List(ctx context.Context, q Query) ([]Memory, error) {
 type WorkspaceInfo struct {
 	Key      string `json:"key"`
 	Name     string `json:"name"`
-	Memories int    `json:"memories"`
+	Memories   int    `json:"memories"`
+	Restricted bool   `json:"restricted"` // tem lista de membros
 }
 
 func (s *Store) Workspaces(ctx context.Context) ([]WorkspaceInfo, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT w.key, w.name, count(m.id) FILTER (WHERE NOT m.deleted AND m.superseded_by IS NULL)
+		SELECT w.key, w.name, count(m.id) FILTER (WHERE NOT m.deleted AND m.superseded_by IS NULL),
+			EXISTS (SELECT 1 FROM workspace_members wm WHERE wm.workspace = w.key)
 		FROM workspaces w LEFT JOIN memories m ON m.workspace = w.key
 		GROUP BY w.key, w.name ORDER BY w.name`)
 	if err != nil {
@@ -92,7 +94,7 @@ func (s *Store) Workspaces(ctx context.Context) ([]WorkspaceInfo, error) {
 	out := []WorkspaceInfo{}
 	for rows.Next() {
 		var w WorkspaceInfo
-		if err := rows.Scan(&w.Key, &w.Name, &w.Memories); err != nil {
+		if err := rows.Scan(&w.Key, &w.Name, &w.Memories, &w.Restricted); err != nil {
 			return nil, err
 		}
 		out = append(out, w)

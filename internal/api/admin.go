@@ -6,13 +6,50 @@ import (
 	"bo-memory-server/internal/auth"
 )
 
+// listWorkspaces: só os que o usuário pode ver (admin vê todos).
 func (s *Server) listWorkspaces(w http.ResponseWriter, r *http.Request) {
 	items, err := s.memory.Workspaces(r.Context())
 	if err != nil {
 		fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	a, err := s.access(r)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	out := items[:0]
+	for _, it := range items {
+		if a.Can(&it.Key) {
+			out = append(out, it)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": out})
+}
+
+// members (admin): quem pertence ao workspace — e-mails ou *@dominio; vazio = aberto.
+func (s *Server) listMembers(w http.ResponseWriter, r *http.Request) {
+	items, err := s.memory.Members(r.Context(), r.PathValue("key"))
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"members": items})
+}
+
+func (s *Server) setMembers(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Members []string `json:"members"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	items, err := s.memory.SetMembers(r.Context(), r.PathValue("key"), body.Members, auth.UserFrom(r.Context()).ID)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"members": items})
 }
 
 func (s *Server) listFolders(w http.ResponseWriter, r *http.Request) {

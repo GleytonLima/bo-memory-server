@@ -15,6 +15,11 @@ import (
 
 const DecisionMax = 280
 
+var (
+	kinds      = []string{"note", "decision", "progress", "idea", "howto"}
+	ideaStates = []string{"open", "converted", "discarded"}
+)
+
 type Author struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
@@ -23,7 +28,7 @@ type Author struct {
 type Memory struct {
 	ID           string          `json:"id"`
 	Rev          int64           `json:"rev"`
-	Kind         string          `json:"kind"`  // note | decision | progress
+	Kind         string          `json:"kind"`  // note | decision | progress | idea | howto
 	Scope        string          `json:"scope"` // global | project | folder
 	Workspace    *string         `json:"workspace"`
 	Folder       *string         `json:"folder"` // remote git normalizado
@@ -34,6 +39,7 @@ type Memory struct {
 	Progress     json.RawMessage `json:"progress"`
 	Refs         []Ref           `json:"refs"`   // vínculos para outras memórias (ver refs.go)
 	Review       json.RawMessage `json:"review"` // marca "a revisar": { reason, source, by, at }
+	Status       *string         `json:"status"` // ideia: open | converted | discarded
 	Author       *Author         `json:"author"`
 	CreatedAt    time.Time       `json:"createdAt"`
 	UpdatedAt    time.Time       `json:"updatedAt"`
@@ -74,8 +80,11 @@ func (m *Memory) Normalize() error {
 	if m.Kind == "" {
 		m.Kind = "note"
 	}
-	if !slices.Contains([]string{"note", "decision", "progress"}, m.Kind) {
-		return invalid("Tipo inválido: %q (use note, decision ou progress).", m.Kind)
+	if !slices.Contains(kinds, m.Kind) {
+		return invalid("Tipo inválido: %q (use %s).", m.Kind, strings.Join(kinds, ", "))
+	}
+	if err := m.normalizeStatus(); err != nil {
+		return err
 	}
 	if m.Kind == "progress" {
 		m.Scope = "project" // progresso sempre pertence a um workspace
@@ -140,7 +149,7 @@ func SameContent(a, b *Memory) bool {
 	return a.Kind == b.Kind && a.Scope == b.Scope && a.Text == b.Text && a.Deleted == b.Deleted &&
 		strEq(a.Workspace, b.Workspace) && strEq(a.Folder, b.Folder) && strEq(a.TaskKey, b.TaskKey) &&
 		strEq(a.SupersededBy, b.SupersededBy) && slices.Equal(a.Tags, b.Tags) && jsonEq(a.Progress, b.Progress) &&
-		slices.Equal(a.Refs, b.Refs) && jsonEq(a.Review, b.Review)
+		slices.Equal(a.Refs, b.Refs) && jsonEq(a.Review, b.Review) && strEq(a.Status, b.Status)
 }
 
 func jsonEq(a, b json.RawMessage) bool {
@@ -149,4 +158,21 @@ func jsonEq(a, b json.RawMessage) bool {
 	}
 	var x, y any
 	return json.Unmarshal(a, &x) == nil && json.Unmarshal(b, &y) == nil && fmt.Sprint(x) == fmt.Sprint(y)
+}
+
+// normalizeStatus: ideia nasce "open" e só aceita os estados conhecidos; os outros tipos não têm estado.
+func (m *Memory) normalizeStatus() error {
+	m.Status = emptyToNil(m.Status)
+	if m.Kind != "idea" {
+		m.Status = nil
+		return nil
+	}
+	if m.Status == nil {
+		open := "open"
+		m.Status = &open
+	}
+	if !slices.Contains(ideaStates, *m.Status) {
+		return invalid("Estado de ideia inválido: %q (use %s).", *m.Status, strings.Join(ideaStates, ", "))
+	}
+	return nil
 }

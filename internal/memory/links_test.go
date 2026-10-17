@@ -92,3 +92,32 @@ func TestRefsTakePartInConflicts(t *testing.T) {
 		t.Fatalf("mudar o vínculo com rev velho deveria conflitar: %+v", r)
 	}
 }
+
+func TestIdeaAndHowto(t *testing.T) {
+	s, user := setup(t)
+	idea := s.Upsert(ctx, memory.Memory{Kind: "idea", Workspace: ptr("app"), Scope: "project", Text: "Exportar memórias em markdown"}, 0, user)
+	how := s.Upsert(ctx, memory.Memory{Kind: "howto", Scope: "global", Text: "Deploy travado: limpar o cache do runner.", Status: ptr("open")}, 0, user)
+	if idea.Status != "ok" || how.Status != "ok" {
+		t.Fatalf("criar: %+v %+v", idea, how)
+	}
+	if m, _ := s.Get(ctx, idea.ID); m.Status == nil || *m.Status != "open" {
+		t.Fatalf("ideia nasce aberta: %+v", m.Status)
+	}
+	if m, _ := s.Get(ctx, how.ID); m.Status != nil {
+		t.Fatalf("como fazer não tem estado: %v", *m.Status)
+	}
+	m, _ := s.Get(ctx, idea.ID)
+	m.Status = ptr("arquivada")
+	if r := s.Upsert(ctx, *m, m.Rev, user); r.Status != "error" {
+		t.Fatalf("estado inválido: %+v", r)
+	}
+	m.Status, m.TaskKey = ptr("converted"), ptr("APP-9")
+	if r := s.Upsert(ctx, *m, m.Rev, user); r.Status != "ok" {
+		t.Fatalf("virar tarefa: %+v", r)
+	}
+	all, _ := s.List(ctx, memory.Query{Workspace: "app"})
+	ideas, _ := s.List(ctx, memory.Query{Workspace: "app", Kind: "idea"})
+	if len(all) != 1 || all[0].Kind != "howto" || len(ideas) != 1 {
+		t.Fatalf("ideia fechada só no filtro de ideias: tudo=%d ideias=%d", len(all), len(ideas))
+	}
+}

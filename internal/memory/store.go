@@ -18,7 +18,7 @@ var ErrNotFound = errors.New("memória não encontrada")
 
 // selectSQL: colunas de uma memória com o autor (alias m = memories, u = users).
 const selectSQL = `SELECT m.id, m.rev, m.kind, m.scope, m.workspace, m.folder, m.text, m.tags, m.task_key,
-	m.superseded_by, m.progress, m.refs, m.review, m.created_at, m.updated_at, m.deleted, u.id, u.name
+	m.superseded_by, m.progress, m.refs, m.review, m.status, m.created_at, m.updated_at, m.deleted, u.id, u.name
 	FROM memories m LEFT JOIN users u ON u.id = m.author_id`
 
 func scan(row pgx.Row) (*Memory, error) {
@@ -26,7 +26,7 @@ func scan(row pgx.Row) (*Memory, error) {
 	var authorID, authorName *string
 	var id, superseded *string
 	err := row.Scan(&id, &m.Rev, &m.Kind, &m.Scope, &m.Workspace, &m.Folder, &m.Text, &m.Tags, &m.TaskKey,
-		&superseded, &m.Progress, &m.Refs, &m.Review, &m.CreatedAt, &m.UpdatedAt, &m.Deleted, &authorID, &authorName)
+		&superseded, &m.Progress, &m.Refs, &m.Review, &m.Status, &m.CreatedAt, &m.UpdatedAt, &m.Deleted, &authorID, &authorName)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}

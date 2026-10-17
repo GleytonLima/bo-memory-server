@@ -53,6 +53,9 @@ func (s *Store) List(ctx context.Context, q Query) ([]Memory, error) {
 	if !q.IncludeSuperseded {
 		where = append(where, "m.superseded_by IS NULL")
 	}
+	if q.Kind != "idea" { // ideias fechadas (viraram tarefa / descartadas) só no filtro de ideias
+		where = append(where, "coalesce(m.status, 'open') = 'open'")
+	}
 	order := "m.updated_at DESC"
 	if ts := tsQuery(q.Q); ts != "" {
 		p := arg(ts)

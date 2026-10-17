@@ -9,7 +9,7 @@ Mudou o contrato? Atualize este arquivo primeiro.
 | Conceito | O que é |
 | --- | --- |
 | **Workspace** | Identidade de um projeto entre máquinas. Chave textual escolhida pelo time (ex.: `bash-organizer`). No desktop, cada projeto pode ter uma `syncKey`. |
-| **Memória** | `note` (texto livre), `decision` (uma frase com o porquê, ≤ 280, sem quebra de linha) ou `progress` (estado de uma tarefa para outro dev retomar). |
+| **Memória** | `note` (texto livre), `decision` (uma frase com o porquê, ≤ 280, sem quebra de linha), `idea` (ideia que surgiu em paralelo), `howto` ("como fazer": como resolvemos, o procedimento, a quem recorrer) ou `progress` (estado de uma tarefa para outro dev retomar). |
 | **Escopo** | `global` (todo o time), `project` (um workspace) ou `folder` (um repositório, em qualquer workspace que o use). |
 | **Pasta (folder)** | Identificada pela **URL normalizada do remote git**, não pelo caminho (que muda entre máquinas). Ver *Normalização de remote*. |
 | **Revisão (`rev`)** | Número crescente global atribuído pelo servidor a cada escrita. O cliente guarda o maior `rev` visto e puxa `since` ele. |
@@ -28,7 +28,7 @@ Mudou o contrato? Atualize este arquivo primeiro.
 {
   "id": "8d1c…-uuid",                 // gerado pelo CLIENTE (uuid v4) — permite criar offline
   "rev": 1532,                         // atribuído pelo servidor
-  "kind": "decision",                  // note | decision | progress
+  "kind": "decision",                  // note | decision | progress | idea | howto
   "scope": "project",                  // global | project | folder
   "workspace": "bash-organizer",       // obrigatório em project e progress; null em global
   "folder": "github.com/gleyton/bo-memory-server", // obrigatório em folder (remote normalizado)
@@ -38,6 +38,7 @@ Mudou o contrato? Atualize este arquivo primeiro.
   "supersededBy": null,                // id da decisão que substituiu esta
   "refs": [{ "id": "uuid", "type": "depends" }], // vínculos (ver "Vínculos e impacto")
   "review": null,                      // marca "a revisar" (ver "Vínculos e impacto")
+  "status": null,                      // só idea: open | converted (virou tarefa; taskKey = a tarefa) | discarded
   "progress": null,                    // só em kind=progress (ver abaixo)
   "author": { "id": "uuid", "name": "Gleyton" },
   "createdAt": "2026-10-17T10:00:00Z",
@@ -151,7 +152,7 @@ O cliente marca a memória como **em conflito**, mostra as duas versões e o usu
 | `GET` | `/v1/workspaces` | workspaces com contagem de memórias |
 | `POST` | `/v1/workspaces` | `{ key, name }` cria (admin) |
 | `GET` | `/v1/folders` | pastas (remotes normalizados) com memórias vivas: `{ items: [{ folder, memories }] }` |
-| `GET` | `/v1/memories?workspace=&scope=&kind=&q=&folder=&limit=` | lista/busca (full-text, sem acentos); sem `workspace` = só globais |
+| `GET` | `/v1/memories?workspace=&scope=&kind=&q=&folder=&limit=` | lista/busca (full-text, sem acentos); sem `workspace` = só globais; ideias fechadas só com `kind=idea` |
 | `POST` | `/v1/memories` | cria (corpo = memória sem `rev`; `id` opcional, o servidor gera se faltar) |
 | `PUT` | `/v1/memories/{id}` | edita; corpo inclui `baseRev` → `409` + `{ server }` em conflito |
 | `DELETE` | `/v1/memories/{id}?baseRev=` | tombstone; `409` em conflito |

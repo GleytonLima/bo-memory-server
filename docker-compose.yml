@@ -1,6 +1,8 @@
 # PostgreSQL para desenvolvimento local. Porta 55432 (configurável: BO_DB_PORT) para não colidir
 # com outros Postgres da máquina.
 #   docker compose up -d
+# Keycloak de TESTE para o SSO (realm "bo-memoria", usuários e segredo só de teste — docs/SSO.md):
+#   docker compose --profile sso up -d keycloak      → http://localhost:8180
 services:
   db:
     image: postgres:16-alpine
@@ -18,6 +20,18 @@ services:
       interval: 2s
       timeout: 3s
       retries: 20
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.4
+    profiles: ["sso"]
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KEYCLOAK_ADMIN: admin # só teste local
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "${BO_KEYCLOAK_PORT:-8180}:8080"
+    volumes:
+      - ./docker/keycloak/realm-bo-memoria.json:/opt/keycloak/data/import/realm-bo-memoria.json:ro
 
 volumes:
   pgdata:

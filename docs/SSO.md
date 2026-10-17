@@ -106,6 +106,30 @@ Requisitos de qualquer provedor:
 - ID token assinado (RS256 ou ES256);
 - suporte a PKCE (S256).
 
+## Testar localmente com Keycloak
+
+O `docker-compose.yml` tem um Keycloak **de teste** atrás do perfil `sso`, com o realm
+`bo-memoria` importado de `docker/keycloak/realm-bo-memoria.json`:
+- cliente confidencial `bo-memory-server`, com PKCE S256;
+- mapeamento do atributo `employeeid` para o ID token;
+- dois usuários.
+
+Senhas e segredos desse realm são **só de teste**.
+
+```bash
+docker compose --profile sso up -d keycloak        # http://localhost:8180 (admin/admin)
+BO_OIDC_ISSUER=http://localhost:8180/realms/bo-memoria BO_OIDC_CLIENT_ID=bo-memory-server BO_OIDC_CLIENT_SECRET=bo-local-teste-segredo BO_OIDC_PROVIDER_NAME=Keycloak go run ./cmd/bo-memory-server
+```
+
+Usuários de teste (senha `bo-teste-123`):
+- `dev.teste`: e-mail `dev.teste@exemplo.com`, employeeid `E-9001`;
+- `outra.pessoa`: e-mail `outra.pessoa@outraempresa.com`. Útil para conferir os membros por
+  domínio: um projeto com `*@exemplo.com` some para ela.
+
+"Sair" na web encerra a sessão do servidor de memória, mas **não** a do provedor. O próximo
+"Entrar" autentica direto, sem pedir senha. Para trocar de usuário, encerre também no provedor:
+`/realms/bo-memoria/protocol/openid-connect/logout`.
+
 ## Diagnóstico
 
 - **"login expirado ou inválido":** o login levou mais de 10 minutos ou foi reaberto noutra aba.

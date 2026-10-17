@@ -21,6 +21,9 @@ O token impresso pelo `admin create` só aparece uma vez. Outros devs recebem to
 | `DATABASE_URL` | `postgres://bo:bo@localhost:55432/bo_memory?sslmode=disable` |
 | `BO_WEB_DIR`   | `../bo-memory-web` (frontend servido em `/`)                |
 
+**SSO (Entra ID, Google, Okta, Keycloak…):** login pelo provedor da empresa via OpenID Connect,
+usuário por e-mail e employeeid e membros por projeto — passo a passo em [docs/SSO.md](docs/SSO.md).
+
 ## Banco e migrações
 
 O esquema evolui só por migrações SQL versionadas (goose) em `internal/db/migrations`,

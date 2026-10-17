@@ -37,7 +37,7 @@ func (s *Server) listMemories(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(q.Get("limit"))
 	items, err := s.memory.List(r.Context(), memory.Query{
 		Workspace: q.Get("workspace"), Scope: q.Get("scope"), Kind: q.Get("kind"), Folder: q.Get("folder"),
-		Q: q.Get("q"), IncludeSuperseded: q.Get("superseded") == "true", Limit: limit,
+		Q: q.Get("q"), IncludeSuperseded: q.Get("superseded") == "true", NeedsReview: q.Get("review") == "true", Limit: limit,
 	})
 	if err != nil {
 		fail(w, err)

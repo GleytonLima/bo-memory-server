@@ -13,6 +13,7 @@ type Query struct {
 	Folder            string // remote git
 	Q                 string // texto livre (sem acentos, por prefixo)
 	IncludeSuperseded bool
+	NeedsReview       bool // só as marcadas "a revisar"
 	Limit             int
 }
 
@@ -52,6 +53,9 @@ func (s *Store) List(ctx context.Context, q Query) ([]Memory, error) {
 	}
 	if !q.IncludeSuperseded {
 		where = append(where, "m.superseded_by IS NULL")
+	}
+	if q.NeedsReview {
+		where = append(where, "m.review IS NOT NULL")
 	}
 	if q.Kind != "idea" { // ideias fechadas (viraram tarefa / descartadas) só no filtro de ideias
 		where = append(where, "coalesce(m.status, 'open') = 'open'")

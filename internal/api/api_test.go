@@ -111,6 +111,10 @@ func TestAPIFlow(t *testing.T) {
 	if d.do("POST", "/v1/memories/review", map[string]any{"ids": []string{dep.ID}, "reason": "Mudou: A", "source": base.ID}, &marked); len(marked.Results) != 1 || marked.Results[0].Status != "ok" {
 		t.Fatalf("review: %+v", marked)
 	}
+	var toReview struct{ Items []memory.Memory }
+	if d.do("GET", "/v1/memories?review=true", nil, &toReview); len(toReview.Items) != 1 || toReview.Items[0].ID != dep.ID {
+		t.Fatalf("review=true: %+v", toReview)
+	}
 
 	// revogar o token do dev corta o acesso
 	if code := a.do("DELETE", "/v1/tokens/"+issued.ID, nil, nil); code != 204 {

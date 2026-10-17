@@ -32,6 +32,8 @@ type Memory struct {
 	TaskKey      *string         `json:"taskKey"`
 	SupersededBy *string         `json:"supersededBy"`
 	Progress     json.RawMessage `json:"progress"`
+	Refs         []Ref           `json:"refs"`   // vínculos para outras memórias (ver refs.go)
+	Review       json.RawMessage `json:"review"` // marca "a revisar": { reason, source, by, at }
 	Author       *Author         `json:"author"`
 	CreatedAt    time.Time       `json:"createdAt"`
 	UpdatedAt    time.Time       `json:"updatedAt"`
@@ -109,6 +111,14 @@ func (m *Memory) Normalize() error {
 		return invalid("Memória de progresso precisa de taskKey.")
 	}
 	m.Tags = normalizeTags(m.Tags)
+	refs, err := normalizeRefs(m.ID, m.Refs)
+	if err != nil {
+		return err
+	}
+	m.Refs = refs
+	if emptyJSON(m.Review) {
+		m.Review = nil
+	}
 	return nil
 }
 
@@ -129,7 +139,8 @@ func strEq(a, b *string) bool { return (a == nil && b == nil) || (a != nil && b 
 func SameContent(a, b *Memory) bool {
 	return a.Kind == b.Kind && a.Scope == b.Scope && a.Text == b.Text && a.Deleted == b.Deleted &&
 		strEq(a.Workspace, b.Workspace) && strEq(a.Folder, b.Folder) && strEq(a.TaskKey, b.TaskKey) &&
-		strEq(a.SupersededBy, b.SupersededBy) && slices.Equal(a.Tags, b.Tags) && jsonEq(a.Progress, b.Progress)
+		strEq(a.SupersededBy, b.SupersededBy) && slices.Equal(a.Tags, b.Tags) && jsonEq(a.Progress, b.Progress) &&
+		slices.Equal(a.Refs, b.Refs) && jsonEq(a.Review, b.Review)
 }
 
 func jsonEq(a, b json.RawMessage) bool {

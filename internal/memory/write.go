@@ -99,14 +99,14 @@ func (s *Store) inTx(ctx context.Context, id string, fn func(pgx.Tx) Result) Res
 func write(ctx context.Context, tx pgx.Tx, m *Memory, userID string) (int64, error) {
 	var rev int64
 	err := tx.QueryRow(ctx, `
-		INSERT INTO memories (id, rev, kind, scope, workspace, folder, text, tags, task_key, superseded_by, progress, author_id)
-		VALUES ($1, nextval('memory_rev_seq'), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		INSERT INTO memories (id, rev, kind, scope, workspace, folder, text, tags, task_key, superseded_by, progress, refs, review, author_id)
+		VALUES ($1, nextval('memory_rev_seq'), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		ON CONFLICT (id) DO UPDATE SET rev = EXCLUDED.rev, kind = EXCLUDED.kind, scope = EXCLUDED.scope,
 			workspace = EXCLUDED.workspace, folder = EXCLUDED.folder, text = EXCLUDED.text, tags = EXCLUDED.tags,
 			task_key = EXCLUDED.task_key, superseded_by = EXCLUDED.superseded_by, progress = EXCLUDED.progress,
-			updated_at = now(), deleted = false
+			refs = EXCLUDED.refs, review = EXCLUDED.review, updated_at = now(), deleted = false
 		RETURNING rev`,
-		m.ID, m.Kind, m.Scope, m.Workspace, m.Folder, m.Text, m.Tags, m.TaskKey, m.SupersededBy, nullJSON(m.Progress), nullID(userID),
+		m.ID, m.Kind, m.Scope, m.Workspace, m.Folder, m.Text, m.Tags, m.TaskKey, m.SupersededBy, nullJSON(m.Progress), refsJSON(m.Refs), nullJSON(m.Review), nullID(userID),
 	).Scan(&rev)
 	return rev, err
 }

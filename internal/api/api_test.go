@@ -99,6 +99,19 @@ func TestAPIFlow(t *testing.T) {
 		t.Fatalf("folders: %+v", folders)
 	}
 
+	// vínculos: B depende de A → links de A mostram B no impacto; review marca B
+	var base, dep struct{ ID string }
+	d.do("POST", "/v1/memories", map[string]any{"kind": "note", "scope": "global", "text": "A"}, &base)
+	d.do("POST", "/v1/memories", map[string]any{"kind": "note", "scope": "global", "text": "B", "refs": []any{map[string]string{"id": base.ID, "type": "depends"}}}, &dep)
+	var links memory.Links
+	if d.do("GET", "/v1/memories/"+base.ID+"/links", nil, &links); len(links.Impact) != 1 || links.Impact[0].ID != dep.ID {
+		t.Fatalf("links: %+v", links)
+	}
+	var marked struct{ Results []memory.Result }
+	if d.do("POST", "/v1/memories/review", map[string]any{"ids": []string{dep.ID}, "reason": "Mudou: A", "source": base.ID}, &marked); len(marked.Results) != 1 || marked.Results[0].Status != "ok" {
+		t.Fatalf("review: %+v", marked)
+	}
+
 	// revogar o token do dev corta o acesso
 	if code := a.do("DELETE", "/v1/tokens/"+issued.ID, nil, nil); code != 204 {
 		t.Fatalf("revogar: %d", code)

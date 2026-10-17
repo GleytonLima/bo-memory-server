@@ -36,6 +36,8 @@ Mudou o contrato? Atualize este arquivo primeiro.
   "tags": ["banco", "infra"],
   "taskKey": "BO-22",                  // opcional
   "supersededBy": null,                // id da decisão que substituiu esta
+  "refs": [{ "id": "uuid", "type": "depends" }], // vínculos (ver "Vínculos e impacto")
+  "review": null,                      // marca "a revisar" (ver "Vínculos e impacto")
   "progress": null,                    // só em kind=progress (ver abaixo)
   "author": { "id": "uuid", "name": "Gleyton" },
   "createdAt": "2026-10-17T10:00:00Z",
@@ -59,6 +61,31 @@ Mudou o contrato? Atualize este arquivo primeiro.
 
 Validações do servidor (iguais às do desktop): `decision` ≤ 280 caracteres e sem `\n`; `scope`/`kind`
 válidos; `workspace` obrigatório em `project`/`progress`; `folder` obrigatório em `folder`.
+
+## Vínculos e impacto
+
+Uma memória aponta para outras em `refs` (até 30), com um tipo:
+
+| `type` | Leitura | Impacto |
+| --- | --- | --- |
+| `depends` | "apoia-se em" — esta vale *porque* a outra vale | sim: se a outra mudar, esta precisa ser revista |
+| `related` | "relacionada a" | não |
+| `contradicts` | "contradiz" (ex.: alternativa descartada, exceção) | não |
+
+`refs` faz parte do conteúdo: sincroniza, vai para o histórico e entra na regra de conflito.
+Auto-referência é descartada; ids repetidos ficam com o último tipo.
+
+**Cadeia de impacto** de X = todas as memórias que dependem de X, direta ou indiretamente (segue só
+`depends`, até 10 níveis, tolera ciclos). Ao editar ou substituir X, o cliente mostra a cadeia e o
+usuário escolhe quais marcar **"a revisar"**:
+
+```json
+"review": { "reason": "Mudou: <texto novo de X>", "source": "<id de X>", "by": { "id": "…", "name": "Ana" }, "at": "…" }
+```
+
+A marca some quando alguém revisa a memória: edita (o cliente grava `review: null`) ou confirma
+sem mudanças (mesma coisa, só com `review: null`). Desktop e web marcam do mesmo jeito: o desktop
+grava a marca localmente e ela sobe no push; a web usa `POST /v1/memories/review`.
 
 ## Sync (desktop ⇄ servidor)
 
@@ -131,6 +158,8 @@ O cliente marca a memória como **em conflito**, mostra as duas versões e o usu
 | `POST` | `/v1/memories/{id}/supersede` | `{ text, … }` cria decisão nova e marca esta como substituída |
 | `POST` | `/v1/progress/{workspace}/{taskKey}/claim` | "retomar": passa a ser o `owner` (registra no histórico) |
 | `GET` | `/v1/memories/{id}/history` | versões anteriores (auditoria) |
+| `GET` | `/v1/memories/{id}/links` | `{ outgoing, incoming, impact }`: itens `{ id, type?, depth?, via?, memory }` (`memory` null se apagada) |
+| `POST` | `/v1/memories/review` | `{ ids, reason, source }` marca "a revisar" → `{ results }` (um por id, como no push) |
 | `GET/POST/DELETE` | `/v1/users`, `/v1/tokens` | administração (admin) |
 
 Erros: `{ "error": "mensagem em português" }` com `400` validação, `401`, `403`, `404`, `409` conflito.
@@ -151,5 +180,6 @@ participa de memórias de escopo `folder` sincronizadas (fica só local).
 | `scope` project + `project_id` | `workspace` = `syncKey` do projeto |
 | `scope` folder + `folder` (caminho) | `folder` = remote normalizado do repo nesse caminho |
 | `kind` note/decision | idem; `progress` é novo |
+| `refs` (JSON, ids = `gid`) e `review` (JSON) | `refs` e `review` |
 
 Projetos sem `syncKey` e pastas sem remote continuam só locais.

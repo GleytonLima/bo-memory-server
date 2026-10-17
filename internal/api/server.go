@@ -32,6 +32,8 @@ func Handler(authStore *auth.Store, memStore *memory.Store, webDir string) http.
 	v1.HandleFunc("DELETE /v1/memories/{id}", s.deleteMemory)
 	v1.HandleFunc("POST /v1/memories/{id}/supersede", s.supersede)
 	v1.HandleFunc("GET /v1/memories/{id}/history", s.history)
+	v1.HandleFunc("GET /v1/memories/{id}/links", s.links)
+	v1.HandleFunc("POST /v1/memories/review", s.markReview)
 	v1.HandleFunc("POST /v1/progress/{workspace}/{taskKey}/claim", s.claim)
 
 	v1.HandleFunc("GET /v1/users", auth.RequireAdmin(s.listUsers))

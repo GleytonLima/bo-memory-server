@@ -117,3 +117,27 @@ func (s *Server) claim(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, m)
 }
+
+func (s *Server) links(w http.ResponseWriter, r *http.Request) {
+	links, err := s.memory.Links(r.Context(), r.PathValue("id"))
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, links)
+}
+
+// markReview marca memórias impactadas como "a revisar": { ids, reason, source }.
+func (s *Server) markReview(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		IDs    []string `json:"ids"`
+		Reason string   `json:"reason"`
+		Source string   `json:"source"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	user := auth.UserFrom(r.Context())
+	results := s.memory.MarkReview(r.Context(), body.IDs, body.Reason, body.Source, memory.Author{ID: user.ID, Name: user.Name})
+	writeJSON(w, http.StatusOK, map[string]any{"results": results})
+}

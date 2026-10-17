@@ -1,0 +1,23 @@
+# PostgreSQL para desenvolvimento local. Porta 55432 (configurável: BO_DB_PORT) para não colidir
+# com outros Postgres da máquina.
+#   docker compose up -d
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: bo
+      POSTGRES_PASSWORD: bo
+      POSTGRES_DB: bo_memory
+    ports:
+      - "${BO_DB_PORT:-55432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro # cria também o banco de testes
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bo -d bo_memory"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgdata:

@@ -105,3 +105,29 @@ func (s *Store) CreateWorkspace(ctx context.Context, key, name string) error {
 		ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name`, key, name)
 	return err
 }
+
+type FolderInfo struct {
+	Folder   string `json:"folder"` // remote normalizado
+	Memories int    `json:"memories"`
+}
+
+// Folders lista as pastas (remotes) que têm memórias vivas — para a web navegar por repositório.
+func (s *Store) Folders(ctx context.Context) ([]FolderInfo, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT folder, count(*) FROM memories
+		WHERE scope = 'folder' AND NOT deleted AND superseded_by IS NULL
+		GROUP BY folder ORDER BY folder`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []FolderInfo{}
+	for rows.Next() {
+		var f FolderInfo
+		if err := rows.Scan(&f.Folder, &f.Memories); err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	return out, rows.Err()
+}

@@ -93,6 +93,12 @@ func TestAPIFlow(t *testing.T) {
 		t.Fatalf("edição com rev velho deveria dar 409: %d", code)
 	}
 
+	var folders struct{ Items []memory.FolderInfo }
+	d.do("POST", "/v1/memories", map[string]any{"kind": "note", "scope": "folder", "folder": "git@github.com:Time/Api.git", "text": "porta 8080"}, nil)
+	if a.do("GET", "/v1/folders", nil, &folders); len(folders.Items) != 1 || folders.Items[0].Folder != "github.com/time/api" {
+		t.Fatalf("folders: %+v", folders)
+	}
+
 	// revogar o token do dev corta o acesso
 	if code := a.do("DELETE", "/v1/tokens/"+issued.ID, nil, nil); code != 204 {
 		t.Fatalf("revogar: %d", code)

@@ -15,6 +15,15 @@ func (s *Server) listWorkspaces(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
+func (s *Server) listFolders(w http.ResponseWriter, r *http.Request) {
+	items, err := s.memory.Folders(r.Context())
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
 func (s *Server) createWorkspace(w http.ResponseWriter, r *http.Request) {
 	var body struct{ Key, Name string }
 	if !decode(w, r, &body) {

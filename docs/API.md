@@ -164,7 +164,7 @@ O cliente marca a memória como **em conflito**, mostra as duas versões e o usu
 | `GET` | `/v1/workspaces` | workspaces com contagem de memórias |
 | `POST` | `/v1/workspaces` | `{ key, name }` cria (admin) |
 | `GET` | `/v1/folders` | pastas (remotes normalizados) com memórias vivas: `{ items: [{ folder, memories }] }` |
-| `GET` | `/v1/memories?workspace=&scope=&kind=&q=&folder=&review=&limit=` | lista/busca (full-text, sem acentos); sem `workspace` = só globais; ideias fechadas só com `kind=idea`; `review=true` = só as "a revisar" |
+| `GET` | `/v1/memories?workspace=&scope=&kind=&q=&folder=&review=&limit=` | lista/busca → `{ items, mode?, warning? }`: full-text sem acentos; com busca semântica ligada, `mode: "hybrid"` (texto + significado) e itens achados só pelo significado com `match: "semantic"`; provedor falhou → `mode: "text"` + `warning` ([SEMANTIC.md](SEMANTIC.md)). Sem `workspace` = só globais; ideias fechadas só com `kind=idea`; `review=true` = só as "a revisar" |
 | `POST` | `/v1/memories` | cria (corpo = memória sem `rev`; `id` opcional, o servidor gera se faltar) |
 | `PUT` | `/v1/memories/{id}` | edita; corpo inclui `baseRev` → `409` + `{ server }` em conflito |
 | `DELETE` | `/v1/memories/{id}?baseRev=` | tombstone; `409` em conflito |

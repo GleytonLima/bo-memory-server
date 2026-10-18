@@ -5,7 +5,7 @@
 #   docker compose --profile sso up -d keycloak      → http://localhost:8180
 services:
   db:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16 # PostgreSQL 16 + pgvector (busca semântica, opcional)
     environment:
       POSTGRES_USER: bo
       POSTGRES_PASSWORD: bo

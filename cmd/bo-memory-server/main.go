@@ -17,11 +17,14 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"bo-memory-server/internal/api"
 	"bo-memory-server/internal/auth"
 	"bo-memory-server/internal/config"
 	"bo-memory-server/internal/db"
 	"bo-memory-server/internal/memory"
+	"bo-memory-server/internal/semantic"
 	"bo-memory-server/internal/sso"
 )
 
@@ -47,21 +50,7 @@ func main() {
 	switch cmd {
 	case "serve":
 		must(db.Migrate(ctx, pool, "up"))
-		users := auth.NewStore(pool)
-		users.PersonalTokens = os.Getenv("BO_PERSONAL_TOKENS") != "false"
-		if d, err := strconv.Atoi(os.Getenv("BO_TOKEN_TTL_DAYS")); err == nil && d > 0 {
-			users.PersonalTTL = time.Duration(d) * 24 * time.Hour
-		}
-		var flow *sso.Flow
-		if sc := sso.LoadConfig(); sc.Enabled() {
-			flow, err = sso.New(ctx, sc, pool, users)
-			must(err)
-			log.Printf("SSO: %s (%s), sessões de %s", sc.ProviderName, sc.Issuer, sc.SessionTTL)
-		}
-		if !users.PersonalTokens {
-			log.Printf("tokens pessoais desligados (BO_PERSONAL_TOKENS=false): só sessões SSO")
-		}
-		serve(ctx, cfg, api.Handler(users, memory.NewStore(pool), cfg.WebDir, flow))
+		serve(ctx, cfg, handler(ctx, cfg, pool))
 	case "migrate":
 		if len(args) == 0 {
 			log.Fatal("uso: bo-memory-server migrate up|down|reset|status")
@@ -73,6 +62,33 @@ func main() {
 	default:
 		log.Fatalf("comando desconhecido: %s", cmd)
 	}
+}
+
+// handler: usuários e tokens, SSO e busca semântica (se configurados) e as rotas.
+func handler(ctx context.Context, cfg config.Config, pool *pgxpool.Pool) http.Handler {
+	users := auth.NewStore(pool)
+	users.PersonalTokens = os.Getenv("BO_PERSONAL_TOKENS") != "false"
+	if d, err := strconv.Atoi(os.Getenv("BO_TOKEN_TTL_DAYS")); err == nil && d > 0 {
+		users.PersonalTTL = time.Duration(d) * 24 * time.Hour
+	}
+	var flow *sso.Flow
+	if sc := sso.LoadConfig(); sc.Enabled() {
+		var err error
+		flow, err = sso.New(ctx, sc, pool, users)
+		must(err)
+		log.Printf("SSO: %s (%s), sessões de %s", sc.ProviderName, sc.Issuer, sc.SessionTTL)
+	}
+	if !users.PersonalTokens {
+		log.Printf("tokens pessoais desligados (BO_PERSONAL_TOKENS=false): só sessões SSO")
+	}
+	memories := memory.NewStore(pool)
+	if ix, err := semantic.Start(ctx, pool, semantic.LoadConfig()); err != nil {
+		log.Printf("busca semântica desligada: %v", err)
+	} else if ix != nil {
+		memories.Semantic = ix
+		log.Printf("busca semântica ligada (%s)", os.Getenv("BO_EMBED_PROVIDER"))
+	}
+	return api.Handler(users, memories, cfg.WebDir, flow)
 }
 
 func serve(ctx context.Context, cfg config.Config, h http.Handler) {

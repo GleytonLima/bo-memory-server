@@ -44,6 +44,7 @@ type Memory struct {
 	CreatedAt    time.Time       `json:"createdAt"`
 	UpdatedAt    time.Time       `json:"updatedAt"`
 	Deleted      bool            `json:"deleted"`
+	Match        string          `json:"match,omitempty"` // busca: "semantic" = veio só pelo significado
 }
 
 // ValidationError é um erro de entrada do cliente (vira HTTP 400 / status "error" no sync).

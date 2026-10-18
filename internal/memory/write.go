@@ -99,6 +99,9 @@ func (s *Store) inTx(ctx context.Context, id string, fn func(pgx.Tx) Result) Res
 		if err := tx.Commit(ctx); err != nil {
 			return fail(id, err)
 		}
+		if s.Semantic != nil {
+			s.Semantic.Changed()
+		}
 	}
 	return res
 }

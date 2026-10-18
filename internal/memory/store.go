@@ -10,7 +10,10 @@ import (
 	"bo-memory-server/internal/db"
 )
 
-type Store struct{ pool *pgxpool.Pool }
+type Store struct {
+	pool     *pgxpool.Pool
+	Semantic Semantic // busca por significado (opcional)
+}
 
 func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
 

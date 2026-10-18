@@ -78,7 +78,7 @@ func (s *Server) listMemories(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	limit, _ := strconv.Atoi(q.Get("limit"))
-	items, err := s.memory.List(r.Context(), memory.Query{
+	found, err := s.memory.Search(r.Context(), memory.Query{
 		Workspace: q.Get("workspace"), Scope: q.Get("scope"), Kind: q.Get("kind"), Folder: q.Get("folder"),
 		Q: q.Get("q"), IncludeSuperseded: q.Get("superseded") == "true", NeedsReview: q.Get("review") == "true", Limit: limit,
 	})
@@ -91,7 +91,8 @@ func (s *Server) listMemories(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": allowed(a, items)})
+	found.Items = allowed(a, found.Items)
+	writeJSON(w, http.StatusOK, found)
 }
 
 func (s *Server) createMemory(w http.ResponseWriter, r *http.Request) {

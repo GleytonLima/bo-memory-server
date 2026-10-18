@@ -7,7 +7,7 @@ progresso de tarefas compartilhados entre máquinas e devs. Go + PostgreSQL. O c
 ## Rodando
 
 ```bash
-docker compose up -d                       # PostgreSQL 16 na porta 55432 (BO_DB_PORT)
+docker compose up -d                       # PostgreSQL 16 + pgvector na porta 55432 (BO_DB_PORT)
 go run ./cmd/bo-memory-server admin create --name "Seu Nome" --email voce@empresa.com
 go run ./cmd/bo-memory-server              # aplica as migrações e sobe em :8787
 ```
@@ -23,6 +23,9 @@ O token impresso pelo `admin create` só aparece uma vez. Outros devs recebem to
 
 **SSO (Entra ID, Google, Okta, Keycloak…):** login pelo provedor da empresa via OpenID Connect,
 usuário por e-mail e employeeid e membros por projeto — passo a passo em [docs/SSO.md](docs/SSO.md).
+
+**Busca semântica (opcional):** com `BO_EMBED_PROVIDER=ollama|openai|azure`, a busca da web acha
+também memórias parecidas (pgvector + embeddings) — [docs/SEMANTIC.md](docs/SEMANTIC.md).
 
 ## Banco e migrações
 

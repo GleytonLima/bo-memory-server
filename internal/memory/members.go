@@ -47,7 +47,7 @@ func (s *Store) AccessFor(ctx context.Context, email string, admin bool) (Access
 }
 
 func (s *Store) Members(ctx context.Context, workspace string) ([]string, error) {
-	rows, err := s.pool.Query(ctx, `SELECT email_pattern FROM workspace_members WHERE workspace = $1 ORDER BY email_pattern`, workspace)
+	rows, err := s.pool.Query(ctx, `SELECT email_pattern FROM workspace_members WHERE workspace = $1 ORDER BY email_pattern COLLATE "C"`, workspace)
 	if err != nil {
 		return nil, err
 	}

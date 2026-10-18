@@ -17,6 +17,9 @@ type Store struct {
 
 func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
 
+// Pool: o mesmo banco, para outros stores (ex.: project) montados junto com a API.
+func (s *Store) Pool() *pgxpool.Pool { return s.pool }
+
 var ErrNotFound = errors.New("memória não encontrada")
 
 // selectSQL: colunas de uma memória com o autor (alias m = memories, u = users).

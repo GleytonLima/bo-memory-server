@@ -157,6 +157,50 @@ O cliente marca a memória como **em conflito**, mostra as duas versões e o usu
 2. pull `since` o maior `rev` conhecido → aplica (servidor vence apenas onde não há mudança local pendente);
 3. repetir a cada 30 s e logo após cada gravação local.
 
+## Projeto e layout (trocar de máquina)
+
+Para abrir um projeto numa máquina nova sem refazê-lo à mão, o servidor guarda dois documentos
+por workspace, cada um com `version` (controle otimista, como o `rev` das memórias):
+
+| Documento | De quem | Conteúdo |
+| --- | --- | --- |
+| **Projeto** | do workspace (todo o time) | `name`, `folders` (pastas pelo remote), `columns` (colunas do quadro) |
+| **Layout** | de cada usuário, por workspace | `groups` com seus `terminals` |
+
+```json
+// GET /v1/workspaces/{key}/project
+{
+  "workspace": "bash-organizer",
+  "name": "Bash Organizer",
+  "folders": [{ "name": "organizer", "remote": "github.com/gleyton/organizer",
+                "url": "https://github.com/Gleyton/organizer.git" }],   // url: para clonar (sem usuário/senha)
+  "columns": [{ "id": "c1", "name": "A fazer", "description": "…" }],
+  "version": 3, "updatedAt": "…", "updatedBy": { "id": "uuid", "name": "Gleyton" }
+}
+// GET /v1/workspaces/{key}/layout   (só o seu)
+{
+  "workspace": "bash-organizer",
+  "groups": [{ "name": "Agente", "terminals": [
+    { "name": "devtools", "folder": "github.com/gleyton/organizer", "subdir": "", "startup": "", "color": null }
+  ] }],
+  "version": 7, "updatedAt": "…"
+}
+```
+
+- **Gravar:** `PUT` no mesmo caminho com o documento e `baseVersion` (a `version` que você tinha;
+  `0` = ainda não existe) → `200` com o documento gravado e a nova `version`, ou `409` + `{ server }`
+  se alguém gravou antes. Conteúdo idêntico ao do servidor não conta como conflito. O `PUT` do
+  projeto cria o workspace se ele não existir (como o push).
+- **Ler:** `404` se ainda não há documento. Workspace restrito: só membros (e admins), `403` para os outros.
+- **Pastas** são identificadas pelo remote normalizado (ver *Normalização de remote*); o servidor
+  normaliza `remote`, recusa `url` com usuário/senha e limita a 100 pastas, 50 colunas, 50 grupos
+  e 200 terminais. O terminal aponta a pasta pelo remote (`folder`, vazio = a primeira pasta) mais
+  uma `subdir` relativa (sem `..`).
+- **Comandos iniciais** (`startup`) só existem no layout pessoal — o de um colega nunca chega a
+  você. Mesmo assim, o desktop mostra os comandos e só os cria depois que você confirma.
+- `GET /v1/workspaces` diz, em cada item, se há projeto (`hasProject`) — é a lista "Abrir projeto
+  do servidor" da máquina nova.
+
 ## API para a web (e scripts)
 
 | Método | Rota | Descrição |
@@ -177,6 +221,8 @@ O cliente marca a memória como **em conflito**, mostra as duas versões e o usu
 | `POST` | `/v1/memories/review` | `{ ids, reason, source }` marca "a revisar" → `{ results }` (um por id, como no push) |
 | `GET/POST/DELETE` | `/v1/users`, `/v1/tokens` | administração (admin) |
 | `GET/PUT` | `/v1/workspaces/{key}/members` | membros do workspace (admin): `{ members: ["ana@x.com", "*@x.com"] }`; vazio = aberto |
+| `GET/PUT` | `/v1/workspaces/{key}/project` | definição do projeto (do time): pastas e colunas; `PUT` com `baseVersion` → `409` em conflito |
+| `GET/PUT` | `/v1/workspaces/{key}/layout` | seu layout no projeto: grupos e terminais; `PUT` com `baseVersion` |
 | `POST` | `/v1/logout` | revoga o token em uso (sair) |
 | `GET` | `/auth/config`, `/auth/login`, `/auth/callback` | SSO (sem auth; ver acima) |
 

@@ -10,6 +10,7 @@ type WorkspaceInfo struct {
 	Name       string `json:"name"`
 	Memories   int    `json:"memories"`
 	Restricted bool   `json:"restricted"` // tem lista de membros
+	HasProject bool   `json:"hasProject"` // há definição do projeto (preenchido pela API)
 }
 
 func (s *Store) Workspaces(ctx context.Context) ([]WorkspaceInfo, error) {

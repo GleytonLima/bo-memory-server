@@ -6,19 +6,21 @@ import (
 
 	"bo-memory-server/internal/auth"
 	"bo-memory-server/internal/memory"
+	"bo-memory-server/internal/project"
 	"bo-memory-server/internal/sso"
 	"bo-memory-server/internal/web"
 )
 
 type Server struct {
-	auth   *auth.Store
-	memory *memory.Store
+	auth     *auth.Store
+	memory   *memory.Store
+	projects *project.Store
 }
 
 // Handler monta as rotas: /healthz, /auth/* (SSO) e a web sem autenticação; /v1/* exige token.
 // `flow` é nil quando não há SSO configurado.
 func Handler(authStore *auth.Store, memStore *memory.Store, webDir string, flow *sso.Flow) http.Handler {
-	s := &Server{auth: authStore, memory: memStore}
+	s := &Server{auth: authStore, memory: memStore, projects: project.NewStore(memStore.Pool())}
 	v1 := http.NewServeMux()
 
 	v1.HandleFunc("GET /v1/me", s.me)
@@ -30,6 +32,10 @@ func Handler(authStore *auth.Store, memStore *memory.Store, webDir string, flow 
 	v1.HandleFunc("POST /v1/workspaces", auth.RequireAdmin(s.createWorkspace))
 	v1.HandleFunc("GET /v1/workspaces/{key}/members", auth.RequireAdmin(s.listMembers))
 	v1.HandleFunc("PUT /v1/workspaces/{key}/members", auth.RequireAdmin(s.setMembers))
+	v1.HandleFunc("GET /v1/workspaces/{key}/project", s.getProject)
+	v1.HandleFunc("PUT /v1/workspaces/{key}/project", s.putProject)
+	v1.HandleFunc("GET /v1/workspaces/{key}/layout", s.getLayout)
+	v1.HandleFunc("PUT /v1/workspaces/{key}/layout", s.putLayout)
 	v1.HandleFunc("GET /v1/folders", s.listFolders)
 
 	v1.HandleFunc("GET /v1/memories", s.listMemories)

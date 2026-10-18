@@ -23,9 +23,15 @@ func (s *Server) listWorkspaces(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	has, err := s.projects.HasProject(r.Context())
+	if err != nil {
+		fail(w, err)
+		return
+	}
 	out := items[:0]
 	for _, it := range items {
 		if a.Can(&it.Key) {
+			it.HasProject = has[it.Key]
 			out = append(out, it)
 		}
 	}

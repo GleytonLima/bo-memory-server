@@ -1,4 +1,4 @@
-// bo-memory-server: servidor de sincronização da memória do Bash Organizer.
+// bo-memory-server: servidor de sincronização da memória do Brain Organizer.
 //
 //	bo-memory-server [serve]                      aplica as migrações e sobe o HTTP (padrão)
 //	bo-memory-server migrate up|down|reset|status gerencia o esquema do banco

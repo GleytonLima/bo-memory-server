@@ -1,6 +1,6 @@
 # bo-memory-server
 
-Servidor de sincronização da memória do [Bash Organizer](../organizer): decisões, notas e
+Servidor de sincronização da memória do [Brain Organizer](../organizer): decisões, notas e
 progresso de tarefas compartilhados entre máquinas e devs. Go + PostgreSQL. O contrato
 (rotas, protocolo de sync, conflitos) está em [docs/API.md](docs/API.md).
 

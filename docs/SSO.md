@@ -29,7 +29,7 @@ Tokens pessoais (`bom_…`) continuam valendo para scripts, CI e o desktop.
 - **Com lista:** só membros e admins leem, sincronizam e escrevem nele.
 - **Sem lista:** o workspace é aberto a todos os usuários.
 
-## Desktop (Bash Organizer)
+## Desktop (Brain Organizer)
 
 O app entra pelo navegador do sistema, como o `gh auth login` e o VS Code (RFC 8252): ele sobe um
 endereço local temporário (`127.0.0.1`, porta aleatória), abre `/auth/desktop` no navegador e

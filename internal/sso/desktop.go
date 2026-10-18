@@ -26,7 +26,7 @@ const (
 
 var (
 	challengeRe   = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
-	ErrDesktopArg = errors.New("pedido de login do app inválido: atualize o Bash Organizer")
+	ErrDesktopArg = errors.New("pedido de login do app inválido: atualize o Brain Organizer")
 	ErrCode       = errors.New("código de login expirado ou inválido: entre de novo pelo app")
 )
 

@@ -1,14 +1,14 @@
 # bo-memory-server — contrato da API e do sync (v1)
 
 Fonte da verdade para os três repositórios: **bo-memory-server** (Go + PostgreSQL), **bo-memory-web**
-(frontend servido pelo Go) e **organizer** (desktop Bash Organizer, cliente de sync).
+(frontend servido pelo Go) e **organizer** (desktop Brain Organizer, cliente de sync).
 Mudou o contrato? Atualize este arquivo primeiro.
 
 ## Conceitos
 
 | Conceito | O que é |
 | --- | --- |
-| **Workspace** | Identidade de um projeto entre máquinas. Chave textual escolhida pelo time (ex.: `bash-organizer`). No desktop, cada projeto pode ter uma `syncKey`. |
+| **Workspace** | Identidade de um projeto entre máquinas. Chave textual escolhida pelo time (ex.: `brain-organizer`). No desktop, cada projeto pode ter uma `syncKey`. |
 | **Memória** | `note` (texto livre), `decision` (uma frase com o porquê, ≤ 280, sem quebra de linha), `idea` (ideia que surgiu em paralelo), `howto` ("como fazer": como resolvemos, o procedimento, a quem recorrer) ou `progress` (estado de uma tarefa para outro dev retomar). |
 | **Escopo** | `global` (todo o time), `project` (um workspace) ou `folder` (um repositório, em qualquer workspace que o use). |
 | **Pasta (folder)** | Identificada pela **URL normalizada do remote git**, não pelo caminho (que muda entre máquinas). Ver *Normalização de remote*. |
@@ -48,7 +48,7 @@ Mudou o contrato? Atualize este arquivo primeiro.
   "rev": 1532,                         // atribuído pelo servidor
   "kind": "decision",                  // note | decision | progress | idea | howto
   "scope": "project",                  // global | project | folder
-  "workspace": "bash-organizer",       // obrigatório em project e progress; null em global
+  "workspace": "brain-organizer",       // obrigatório em project e progress; null em global
   "folder": "github.com/gleyton/bo-memory-server", // obrigatório em folder (remote normalizado)
   "text": "Usamos Postgres porque …",
   "tags": ["banco", "infra"],
@@ -113,7 +113,7 @@ grava a marca localmente e ela sobe no push; a web usa `POST /v1/memories/review
 ### Pull — `POST /v1/sync/pull`
 
 ```json
-{ "since": 1500, "workspaces": ["bash-organizer"], "folders": ["github.com/gleyton/bo-memory-server"] }
+{ "since": 1500, "workspaces": ["brain-organizer"], "folders": ["github.com/gleyton/bo-memory-server"] }
 ```
 
 Resposta: memórias com `rev > since` que valem para o cliente — `global` + `project`/`progress` dos
@@ -176,8 +176,8 @@ por workspace, cada um com `version` (controle otimista, como o `rev` das memór
 ```json
 // GET /v1/workspaces/{key}/project
 {
-  "workspace": "bash-organizer",
-  "name": "Bash Organizer",
+  "workspace": "brain-organizer",
+  "name": "Brain Organizer",
   "folders": [{ "name": "organizer", "remote": "github.com/gleyton/organizer",
                 "url": "https://github.com/Gleyton/organizer.git" }],   // url: para clonar (sem usuário/senha)
   "columns": [{ "id": "c1", "name": "A fazer", "description": "…" }],
@@ -185,7 +185,7 @@ por workspace, cada um com `version` (controle otimista, como o `rev` das memór
 }
 // GET /v1/workspaces/{key}/layout   (só o seu)
 {
-  "workspace": "bash-organizer",
+  "workspace": "brain-organizer",
   "groups": [{ "name": "Agente", "terminals": [
     { "name": "devtools", "folder": "github.com/gleyton/organizer", "subdir": "", "startup": "", "color": null }
   ] }],
@@ -214,7 +214,7 @@ esquema de `rev` das memórias (sequência própria das tarefas).
 
 ```json
 {
-  "workspace": "bash-organizer",
+  "workspace": "brain-organizer",
   "id": "k3j9x2ab",                 // gerado pelo CLIENTE (texto, até 64) — permite criar offline
   "key": "BO-27",                   // único entre as tarefas vivas do workspace (o servidor garante)
   "rev": 88,

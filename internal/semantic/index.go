@@ -19,8 +19,10 @@ const (
 type Index struct {
 	pool   *pgxpool.Pool
 	emb    Embedder
-	model  string
+	model  string // Config.VectorKey: modelo + prefixo dos documentos
 	minSim float64
+	qPre   string // prefixo da consulta
+	dPre   string // prefixo dos documentos
 	nudge  chan struct{}
 
 	mu      sync.Mutex
@@ -29,7 +31,7 @@ type Index struct {
 }
 
 func New(pool *pgxpool.Pool, emb Embedder, cfg Config) *Index {
-	return &Index{pool: pool, emb: emb, model: cfg.Model, minSim: cfg.MinSimilarity, nudge: make(chan struct{}, 1), queries: map[string][]float32{}}
+	return &Index{pool: pool, emb: emb, model: cfg.VectorKey(), minSim: cfg.MinSimilarity, qPre: cfg.QueryPrefix, dPre: cfg.DocPrefix, nudge: make(chan struct{}, 1), queries: map[string][]float32{}}
 }
 
 // Start liga a busca semântica se configurada: cria a extensão e a tabela e indexa em segundo plano.
@@ -144,7 +146,7 @@ func (ix *Index) IndexPending(ctx context.Context) (int, error) {
 			rows.Close()
 			return 0, err
 		}
-		ids, docs, hashes = append(ids, id), append(docs, doc), append(hashes, hash)
+		ids, docs, hashes = append(ids, id), append(docs, ix.dPre+doc), append(hashes, hash)
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil || len(ids) == 0 {

@@ -168,8 +168,30 @@ func TestResetKeepsWorking(t *testing.T) {
 	}
 }
 
+// Prefixos: a família nomic recebe search_document/search_query; mudar o prefixo reindexa.
+func TestPrefixes(t *testing.T) {
+	ctx := context.Background()
+	store, _, fake, pool := setup(t, "openai")
+	t.Setenv("BO_EMBED_MODEL", "text-embedding-nomic-embed-text-v1.5")
+	ix := index(t, pool)
+	store.Semantic = ix
+	put(t, store, "Banco de dados")
+	indexAll(t, ix)
+	if in, _ := fake.Inputs.Load().([]string); len(in) != 1 || !strings.HasPrefix(in[0], "search_document: Banco") {
+		t.Fatalf("documento com o prefixo do nomic: %q", in)
+	}
+	store.Search(ctx, memory.Query{Q: "postgres"})
+	if in, _ := fake.Inputs.Load().([]string); len(in) != 1 || in[0] != "search_query: postgres" {
+		t.Fatalf("consulta com o prefixo do nomic: %q", in)
+	}
+	t.Setenv("BO_EMBED_DOC_PREFIX", "none")
+	if n := indexAll(t, index(t, pool)); n != 1 {
+		t.Fatalf("sem o prefixo, os vetores são outros: reindexa (%d)", n)
+	}
+}
+
 func TestConfig(t *testing.T) {
-	for _, k := range []string{"BO_EMBED_PROVIDER", "BO_EMBED_URL", "BO_EMBED_MODEL", "BO_EMBED_KEY", "BO_EMBED_API_VERSION", "BO_EMBED_MIN_SIMILARITY"} {
+	for _, k := range []string{"BO_EMBED_PROVIDER", "BO_EMBED_URL", "BO_EMBED_MODEL", "BO_EMBED_KEY", "BO_EMBED_API_VERSION", "BO_EMBED_MIN_SIMILARITY", "BO_EMBED_QUERY_PREFIX", "BO_EMBED_DOC_PREFIX"} {
 		t.Setenv(k, "")
 	}
 	if c := semantic.LoadConfig(); c.Enabled() {
@@ -182,6 +204,18 @@ func TestConfig(t *testing.T) {
 	t.Setenv("BO_EMBED_MIN_SIMILARITY", "0.5")
 	if c := semantic.LoadConfig(); c.URL != "http://127.0.0.1:11434" || c.Model != "nomic-embed-text" || c.MinSimilarity != 0.5 || c.Check() != nil {
 		t.Fatalf("padrões do ollama: %+v", c)
+	}
+	if c := semantic.LoadConfig(); c.QueryPrefix != "search_query: " || c.DocPrefix != "search_document: " || c.VectorKey() != "nomic-embed-text | search_document: " {
+		t.Fatalf("nomic: prefixos padrão: %+v", c)
+	}
+	t.Setenv("BO_EMBED_MODEL", "intfloat/multilingual-e5-small")
+	if c := semantic.LoadConfig(); c.QueryPrefix != "query: " || c.DocPrefix != "passage: " {
+		t.Fatalf("e5: prefixos padrão: %+v", c)
+	}
+	t.Setenv("BO_EMBED_MODEL", "bge-m3")
+	t.Setenv("BO_EMBED_QUERY_PREFIX", "Q: ")
+	if c := semantic.LoadConfig(); c.QueryPrefix != "Q: " || c.DocPrefix != "" || c.VectorKey() != "bge-m3" {
+		t.Fatalf("sem padrão; variável manda: %+v", c)
 	}
 	t.Setenv("BO_EMBED_PROVIDER", "azure")
 	if err := semantic.LoadConfig().Check(); err == nil {

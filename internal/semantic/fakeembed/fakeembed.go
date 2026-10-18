@@ -59,6 +59,7 @@ type Server struct {
 	Calls  atomic.Int64 // pedidos recebidos
 	Fail   atomic.Bool  // responde 500 (provedor fora do ar)
 	Header atomic.Value // último cabeçalho de autenticação (Authorization ou api-key)
+	Inputs atomic.Value // []string: os textos do último pedido
 }
 
 // Start sobe o provedor falso (fechado no fim do teste).
@@ -82,6 +83,7 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	s.Inputs.Store(in.Input)
 	vectors := make([][]float32, len(in.Input))
 	for i, text := range in.Input {
 		vectors[i] = Vector(text)

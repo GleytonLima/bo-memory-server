@@ -46,7 +46,7 @@ func (ix *Index) queryVector(ctx context.Context, query string) ([]float32, erro
 	if ok {
 		return v, nil
 	}
-	vs, err := ix.emb.Embed(ctx, []string{key})
+	vs, err := ix.emb.Embed(ctx, []string{ix.qPre + key})
 	if err != nil {
 		return nil, err
 	}

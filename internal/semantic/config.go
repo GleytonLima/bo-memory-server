@@ -18,6 +18,14 @@ type Config struct {
 	Key           string  // chave de API (openai, azure); nunca vai para o log
 	APIVersion    string  // Azure OpenAI
 	MinSimilarity float64 // abaixo disso, "parecido" não entra no resultado
+	QueryPrefix   string  // texto antes da consulta (ex.: "search_query: " no nomic, "query: " no e5)
+	DocPrefix     string  // texto antes de cada memória indexada
+}
+
+// prefixes: padrões das famílias que treinaram com prefixo; sem eles a qualidade cai muito.
+var prefixes = []struct{ match, query, doc string }{
+	{"nomic-embed", "search_query: ", "search_document: "},
+	{"e5", "query: ", "passage: "},
 }
 
 var defaults = map[string]Config{
@@ -42,11 +50,44 @@ func LoadConfig() Config {
 	c.URL = or(c.URL, d.URL)
 	c.Model = or(c.Model, d.Model)
 	c.APIVersion = or(c.APIVersion, d.APIVersion)
+	c.QueryPrefix, c.DocPrefix = defaultPrefixes(c.Model)
+	c.QueryPrefix = prefixEnv("BO_EMBED_QUERY_PREFIX", c.QueryPrefix)
+	c.DocPrefix = prefixEnv("BO_EMBED_DOC_PREFIX", c.DocPrefix)
 	c.MinSimilarity = 0.3
 	if v, err := strconv.ParseFloat(os.Getenv("BO_EMBED_MIN_SIMILARITY"), 64); err == nil && v >= 0 && v < 1 {
 		c.MinSimilarity = v
 	}
 	return c
+}
+
+// VectorKey: identidade dos vetores — trocar o modelo ou o prefixo dos documentos reindexa.
+func (c Config) VectorKey() string {
+	if c.DocPrefix == "" {
+		return c.Model
+	}
+	return c.Model + " | " + c.DocPrefix
+}
+
+func defaultPrefixes(model string) (query, doc string) {
+	m := strings.ToLower(model)
+	for _, p := range prefixes {
+		if strings.Contains(m, p.match) {
+			return p.query, p.doc
+		}
+	}
+	return "", ""
+}
+
+// prefixEnv: a variável manda quando definida; "none" desliga o prefixo padrão.
+func prefixEnv(key, fallback string) string {
+	switch v, ok := os.LookupEnv(key); {
+	case !ok || v == "":
+		return fallback
+	case v == "none":
+		return ""
+	default:
+		return v
+	}
 }
 
 func (c Config) Enabled() bool { return c.Provider != "off" }

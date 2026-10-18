@@ -26,6 +26,12 @@ Sem provedor, a busca continua só por texto (full-text, sem acentos) — nada m
 - **Stopwords** (PT e EN, sem acento) e letras soltas não entram na consulta por texto
   (`internal/memory/stopwords.go`): com prefixo e OR, "de" virava `de:*` e casava com quase tudo.
 
+**Qualidade em português (medido em 2026-10-18, memória real do projeto, 74 memórias, 8 perguntas
+parafraseadas):** com `text-embedding-nomic-embed-text-v1.5` (LM Studio) a híbrida acertou 1/8 no 1º
+lugar sem prefixos e 2/8 com eles; só pelo vetor, 0/8, com similaridade 0,6–0,76 para quase tudo.
+O nomic é treinado sobretudo em inglês: para conteúdo em português, prefira um modelo multilíngue
+(ex.: `multilingual-e5-small/base`, `bge-m3`) e compare com o mesmo conjunto antes de trocar.
+
 ## Avaliação
 
 `go test ./internal/memory -run TestSearchEval -v` grava `testdata/search-eval.json` (o mesmo
@@ -45,6 +51,7 @@ conjunto saturou — aumente-o com perguntas reais antes de afinar pesos).
 | `BO_EMBED_MODEL` | modelo — padrões: `nomic-embed-text` (Ollama), `text-embedding-3-small` (OpenAI); no Azure, o **nome da implantação** |
 | `BO_EMBED_KEY` | chave da API (OpenAI: `Authorization: Bearer`; Azure: cabeçalho `api-key`). Nunca vai para o log |
 | `BO_EMBED_API_VERSION` | Azure: versão da API (padrão `2024-10-21`) |
+| `BO_EMBED_QUERY_PREFIX` / `BO_EMBED_DOC_PREFIX` | texto antes da consulta / de cada memória. Padrão automático pelo modelo: `nomic-embed*` → `search_query: ` / `search_document: `; `*e5*` → `query: ` / `passage: `; outros, nada. `none` desliga o padrão. Mudar o prefixo dos documentos reindexa tudo |
 | `BO_EMBED_MIN_SIMILARITY` | similaridade mínima (0 a 1, padrão `0.3`); suba se vierem "parecidas" demais — depende do modelo |
 
 Exemplo local, com o Ollama:

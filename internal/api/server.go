@@ -40,6 +40,7 @@ func Handler(authStore *auth.Store, memStore *memory.Store, webDir string, flow 
 	v1.HandleFunc("PUT /v1/workspaces/{key}/layout", s.putLayout)
 	v1.HandleFunc("POST /v1/tasks/pull", s.pullTasks)
 	v1.HandleFunc("POST /v1/tasks/push", s.pushTasks)
+	v1.HandleFunc("POST /v1/tasks/{workspace}/{id}/claim", s.claimTask)
 	v1.HandleFunc("GET /v1/folders", s.listFolders)
 
 	v1.HandleFunc("GET /v1/memories", s.listMemories)

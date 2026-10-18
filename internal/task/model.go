@@ -4,6 +4,7 @@ package task
 
 import (
 	"encoding/json"
+	"errors"
 	"regexp"
 	"strconv"
 	"strings"
@@ -30,9 +31,12 @@ type Task struct {
 	Rev       int64           `json:"rev"`
 	Deleted   bool            `json:"deleted"`
 	Doc       json.RawMessage `json:"task"`
+	Owner     *Author         `json:"owner"` // quem está com a tarefa (só o claim muda)
 	UpdatedBy *Author         `json:"updatedBy"`
 	UpdatedAt time.Time       `json:"updatedAt"`
 }
+
+var ErrNotFound = errors.New("tarefa não encontrada")
 
 type Change struct {
 	Op        string          `json:"op"` // upsert | delete

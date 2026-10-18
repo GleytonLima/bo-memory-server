@@ -219,10 +219,16 @@ esquema de `rev` das memórias (sequência própria das tarefas).
     "createdAt": 1760000000000, "updatedAt": 1760000500000,
     "history": [{ "at": 1760000000000, "by": "Gleyton", "type": "created", "text": "…" }]
   },
+  "owner": { "id": "uuid", "name": "Gleyton" },   // quem está com a tarefa (o servidor controla)
   "updatedBy": { "id": "uuid", "name": "Gleyton" }, "updatedAt": "…"
 }
 ```
 
+- **Dono (`owner`)**: quem criou a tarefa no servidor, até alguém retomá-la com
+  `POST /v1/tasks/{workspace}/{id}/claim` → `200` com a tarefa (novo `rev`, você como dono; fica no
+  histórico como `{ by, type: "claim", text }`) ou `404`. O dono não faz parte do conteúdo: o
+  push não o muda e ele não entra na regra de conflito. "Retomar" no desktop é isso — sem criar
+  tarefa nova.
 - **Pull** — `POST /v1/tasks/pull` `{ since, workspaces }` → `{ items, rev, more }` (tarefas com
   `rev > since` dos workspaces pedidos, inclusive apagadas; máx. 500 por página). Workspaces
   restritos de que você não é membro ficam de fora.
@@ -262,6 +268,7 @@ esquema de `rev` das memórias (sequência própria das tarefas).
 | `GET/PUT` | `/v1/workspaces/{key}/project` | definição do projeto (do time): pastas e colunas; `PUT` com `baseVersion` → `409` em conflito |
 | `GET/PUT` | `/v1/workspaces/{key}/layout` | seu layout no projeto: grupos e terminais; `PUT` com `baseVersion` |
 | `POST` | `/v1/tasks/pull`, `/v1/tasks/push` | quadro de tarefas do workspace (ver "Quadro de tarefas") |
+| `POST` | `/v1/tasks/{workspace}/{id}/claim` | "retomar" uma tarefa do quadro: você passa a ser o `owner` |
 | `POST` | `/v1/logout` | revoga o token em uso (sair) |
 | `GET` | `/auth/config`, `/auth/login`, `/auth/callback` | SSO (sem auth; ver acima) |
 

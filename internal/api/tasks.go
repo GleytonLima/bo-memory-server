@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 
 	"bo-memory-server/internal/auth"
@@ -62,4 +63,23 @@ func (s *Server) pushTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"results": results})
+}
+
+// claimTask: "retomar" uma tarefa do quadro — você passa a ser o dono.
+func (s *Server) claimTask(w http.ResponseWriter, r *http.Request) {
+	ws := r.PathValue("workspace")
+	if !s.allowAll(w, r, &ws) {
+		return
+	}
+	u := auth.UserFrom(r.Context())
+	t, err := s.tasks.Claim(r.Context(), ws, r.PathValue("id"), task.Author{ID: u.ID, Name: u.Name})
+	if errors.Is(err, task.ErrNotFound) {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, t)
 }

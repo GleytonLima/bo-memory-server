@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http/httptest"
 	"testing"
 
@@ -83,6 +84,31 @@ func TestTaskBoardSync(t *testing.T) {
 	ana.do("POST", "/v1/tasks/pull", map[string]any{"since": pulled.Rev, "workspaces": []string{"app"}}, &since)
 	if len(since.Items) != 0 {
 		t.Fatalf("nada novo desde o último rev: %+v", since.Items)
+	}
+
+	// Dono: quem criou; "retomar" troca o dono e registra no histórico; o push não mexe no dono.
+	if o := byID["t1"].Owner; o == nil || o.Name != "Ana" {
+		t.Fatalf("dono inicial deveria ser quem criou: %+v", o)
+	}
+	var claimed task.Task
+	if code := bob.do("POST", "/v1/tasks/app/t1/claim", nil, &claimed); code != 200 || claimed.Owner.Name != "Bob" || claimed.Rev <= byID["t1"].Rev {
+		t.Fatalf("claim: %d %+v", code, claimed)
+	}
+	var doc struct{ History []map[string]any }
+	_ = json.Unmarshal(claimed.Doc, &doc)
+	if len(doc.History) != 1 || doc.History[0]["type"] != "claim" || doc.History[0]["by"] != "Bob" {
+		t.Fatalf("claim no histórico: %s", claimed.Doc)
+	}
+	if after := push(ana, upsert("t1", "AP-1", claimed.Rev, "Ana edita depois")); after[0].Status != "ok" {
+		t.Fatalf("Ana edita depois do claim: %+v", after)
+	}
+	var again task.PullResponse
+	ana.do("POST", "/v1/tasks/pull", map[string]any{"since": claimed.Rev, "workspaces": []string{"app"}}, &again)
+	if len(again.Items) != 1 || again.Items[0].Owner.Name != "Bob" {
+		t.Fatalf("o push da Ana não muda o dono: %+v", again.Items)
+	}
+	if code := bob.do("POST", "/v1/tasks/app/nao-existe/claim", nil, nil); code != 404 {
+		t.Fatalf("claim de tarefa inexistente: %d", code)
 	}
 
 	// Validação e membros.

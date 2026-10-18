@@ -2,7 +2,10 @@ package task
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -12,17 +15,20 @@ type Store struct{ pool *pgxpool.Pool }
 
 func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
 
-const taskSQL = `SELECT t.workspace, t.id, t.key, t.rev, t.deleted, t.doc, t.updated_at, u.id, u.name
-	FROM tasks t LEFT JOIN users u ON u.id = t.updated_by`
+const taskSQL = `SELECT t.workspace, t.id, t.key, t.rev, t.deleted, t.doc, t.updated_at, u.id, u.name, o.id, o.name
+	FROM tasks t LEFT JOIN users u ON u.id = t.updated_by LEFT JOIN users o ON o.id = t.owner_id`
 
 func scan(row pgx.Row) (*Task, error) {
 	var t Task
-	var uid, uname *string
-	if err := row.Scan(&t.Workspace, &t.ID, &t.Key, &t.Rev, &t.Deleted, &t.Doc, &t.UpdatedAt, &uid, &uname); err != nil {
+	var uid, uname, oid, oname *string
+	if err := row.Scan(&t.Workspace, &t.ID, &t.Key, &t.Rev, &t.Deleted, &t.Doc, &t.UpdatedAt, &uid, &uname, &oid, &oname); err != nil {
 		return nil, err
 	}
 	if uid != nil {
 		t.UpdatedBy = &Author{ID: *uid, Name: *uname}
+	}
+	if oid != nil {
+		t.Owner = &Author{ID: *oid, Name: *oname}
 	}
 	return &t, nil
 }
@@ -121,7 +127,8 @@ func (s *Store) apply(ctx context.Context, c Change, userID string) (Result, err
 		return Result{}, err
 	}
 	var rev int64
-	err = tx.QueryRow(ctx, `INSERT INTO tasks (workspace, id, key, rev, doc, updated_by) VALUES ($1, $2, $3, nextval('task_rev_seq'), $4, $5)
+	// quem cria é o dono; o push nunca muda o dono (só o claim)
+	err = tx.QueryRow(ctx, `INSERT INTO tasks (workspace, id, key, rev, doc, updated_by, owner_id) VALUES ($1, $2, $3, nextval('task_rev_seq'), $4, $5, $5)
 		ON CONFLICT (workspace, id) DO UPDATE SET key = $3, rev = EXCLUDED.rev, doc = $4, deleted = false, updated_by = $5, updated_at = now()
 		RETURNING rev`, c.Workspace, c.ID, key, []byte(c.Doc), userID).Scan(&rev)
 	if err != nil {
@@ -153,4 +160,28 @@ func freeKey(ctx context.Context, tx pgx.Tx, c Change) (string, error) {
 		}
 	}
 	return nextKey(c.Key, max), nil
+}
+
+// Claim ("retomar"): você passa a ser o dono; o histórico da tarefa registra a troca.
+func (s *Store) Claim(ctx context.Context, workspace, id string, user Author) (*Task, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	entry, _ := json.Marshal(map[string]any{"at": time.Now().UnixMilli(), "by": user.Name, "type": "claim", "text": "Retomada por " + user.Name})
+	tag, err := tx.Exec(ctx, `UPDATE tasks SET owner_id = $3, updated_by = $3, updated_at = now(), rev = nextval('task_rev_seq'),
+		doc = jsonb_set(doc, '{history}', coalesce(doc->'history', '[]'::jsonb) || jsonb_build_array($4::jsonb))
+		WHERE workspace = $1 AND id = $2 AND NOT deleted`, strings.ToLower(workspace), id, user.ID, entry)
+	if err != nil {
+		return nil, err
+	}
+	if tag.RowsAffected() == 0 {
+		return nil, ErrNotFound
+	}
+	t, err := scan(tx.QueryRow(ctx, taskSQL+` WHERE t.workspace = $1 AND t.id = $2`, strings.ToLower(workspace), id))
+	if err != nil {
+		return nil, err
+	}
+	return t, tx.Commit(ctx)
 }

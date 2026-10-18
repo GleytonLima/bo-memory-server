@@ -35,7 +35,9 @@ func TestWorkspaceMembersByEmail(t *testing.T) {
 	if code := adm.do("PUT", "/v1/workspaces/x/members", map[string]any{"members": []string{"não é e-mail"}}, nil); code != 400 {
 		t.Fatalf("membro inválido deveria dar 400: %d", code)
 	}
-	note := func(ws, text string) map[string]any { return map[string]any{"kind": "note", "scope": "project", "workspace": ws, "text": text} }
+	note := func(ws, text string) map[string]any {
+		return map[string]any{"kind": "note", "scope": "project", "workspace": ws, "text": text}
+	}
 	var inApp, inSecret struct{ ID string }
 	adm.do("POST", "/v1/memories", note("app", "do app"), &inApp)
 	adm.do("POST", "/v1/memories", map[string]any{"kind": "note", "scope": "project", "workspace": "secreto", "text": "segredo", "refs": []any{map[string]string{"id": inApp.ID, "type": "depends"}}}, &inSecret)
@@ -67,8 +69,8 @@ func TestWorkspaceMembersByEmail(t *testing.T) {
 	}
 	var links memory.Links
 	ana.do("GET", "/v1/memories/"+inApp.ID+"/links", nil, &links)
-	if len(links.Incoming) != 1 || links.Incoming[0].Memory != nil {
-		t.Fatalf("vínculo vindo de projeto alheio aparece sem conteúdo: %+v", links.Incoming)
+	if len(links.Incoming) != 0 {
+		t.Fatalf("vínculo vindo de projeto alheio não aparece (nem o id): %+v", links.Incoming)
 	}
 
 	// Bob (outro domínio): só o aberto
@@ -110,5 +112,34 @@ func TestWorkspaceMembersByEmail(t *testing.T) {
 		if m.Text == "pasta secreta" {
 			t.Fatalf("memória de pasta do secreto vazou para quem não é membro")
 		}
+	}
+	var folders struct{ Items []memory.FolderInfo }
+	ana.do("GET", "/v1/folders", nil, &folders)
+	for _, f := range folders.Items {
+		if f.Folder == "github.com/empresa/repo" {
+			t.Fatalf("pasta só com memórias do secreto não aparece para quem não é membro: %+v", folders.Items)
+		}
+	}
+
+	// memória que saiu do secreto para o aberto: o histórico não mostra a versão de quando era secreta
+	var moved struct {
+		ID  string
+		Rev int64
+	}
+	adm.do("POST", "/v1/memories", note("secreto", "plano confidencial"), &moved)
+	if code := adm.do("PUT", "/v1/memories/"+moved.ID, map[string]any{"kind": "note", "scope": "project", "workspace": "aberto", "text": "plano público", "baseRev": moved.Rev}, nil); code != 200 {
+		t.Fatalf("mover a memória para o aberto: %d (rev %d)", code, moved.Rev)
+	}
+	var hist struct{ Items []map[string]any }
+	ana.do("GET", "/v1/memories/"+moved.ID+"/history", nil, &hist)
+	for _, h := range hist.Items {
+		if data, _ := h["data"].(map[string]any); data["text"] == "plano confidencial" {
+			t.Fatalf("histórico mostrou a versão de quando a memória era do secreto")
+		}
+	}
+	var admHist struct{ Items []map[string]any }
+	adm.do("GET", "/v1/memories/"+moved.ID+"/history", nil, &admHist)
+	if len(admHist.Items) != 1 || len(hist.Items) != 0 {
+		t.Fatalf("o admin vê a versão anterior (secreta); a Ana, nenhuma: admin %d, Ana %d", len(admHist.Items), len(hist.Items))
 	}
 }

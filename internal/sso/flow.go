@@ -2,14 +2,16 @@ package sso
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"regexp"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/http"
+	"regexp"
 	"strings"
+	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/jackc/pgx/v5"
@@ -31,8 +33,12 @@ type Flow struct {
 	verifier *oidc.IDTokenVerifier
 }
 
+// idpClient: toda chamada ao provedor (descoberta, chaves, troca do código) com tempo limite.
+var idpClient = &http.Client{Timeout: 10 * time.Second}
+
 func New(ctx context.Context, cfg Config, pool *pgxpool.Pool, users *auth.Store) (*Flow, error) {
-	provider, err := oidc.NewProvider(ctx, cfg.Issuer)
+	// o mesmo cliente segue para a busca das chaves (go-oidc guarda o do contexto do NewProvider)
+	provider, err := oidc.NewProvider(oidc.ClientContext(context.WithoutCancel(ctx), idpClient), cfg.Issuer)
 	if err != nil {
 		return nil, fmt.Errorf("SSO: não foi possível ler o provedor %s: %w", cfg.Issuer, err)
 	}
@@ -100,7 +106,7 @@ func (f *Flow) Finish(ctx context.Context, state, code string) (session, returnT
 	if err != nil {
 		return "", "", err
 	}
-	tok, err := f.oauth.Exchange(ctx, code, oauth2.VerifierOption(verifier))
+	tok, err := f.oauth.Exchange(context.WithValue(ctx, oauth2.HTTPClient, idpClient), code, oauth2.VerifierOption(verifier))
 	if err != nil {
 		return "", "", fmt.Errorf("o provedor recusou o código: %w", err)
 	}

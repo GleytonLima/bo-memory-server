@@ -29,6 +29,8 @@ func fail(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, memory.ErrNotFound):
 		writeError(w, http.StatusNotFound, err.Error())
+	case errors.Is(err, memory.ErrForbidden):
+		writeError(w, http.StatusForbidden, err.Error())
 	default:
 		log.Printf("erro interno: %v", err)
 		writeError(w, http.StatusInternalServerError, "Erro interno no servidor.")
@@ -39,7 +41,7 @@ func fail(w http.ResponseWriter, err error) {
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody))
 	if err := dec.Decode(v); err != nil {
-		writeError(w, http.StatusBadRequest, "JSON inválido: "+err.Error())
+		writeError(w, http.StatusBadRequest, "JSON inválido.")
 		return false
 	}
 	return true

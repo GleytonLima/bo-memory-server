@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"github.com/google/uuid"
 	"strings"
 	"time"
 
@@ -126,6 +127,9 @@ func (s *Store) ListTokens(ctx context.Context, userID string) ([]Token, error) 
 
 // RevokeToken revoga; um usuário comum só revoga os próprios tokens.
 func (s *Store) RevokeToken(ctx context.Context, id string, by User) error {
+	if _, err := uuid.Parse(id); err != nil {
+		return errors.New("token não encontrado") // id malformado: não chega ao banco (sem erro cru do pg)
+	}
 	tag, err := s.pool.Exec(ctx, `
 		UPDATE tokens SET revoked_at = now()
 		WHERE id = $1 AND revoked_at IS NULL AND ($2 OR user_id = $3)`, id, by.IsAdmin, by.ID)

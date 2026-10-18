@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -28,11 +29,18 @@ func (s *Server) pull(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
+// maxBatch: itens por pedido (push, marcar a revisar); o desktop envia em lotes de 200.
+const maxBatch = 500
+
 func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Changes []memory.Change `json:"changes"`
 	}
 	if !decode(w, r, &req) {
+		return
+	}
+	if len(req.Changes) > maxBatch {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("No máximo %d mudanças por envio.", maxBatch))
 		return
 	}
 	user := auth.UserFrom(r.Context())
@@ -59,7 +67,7 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 			results = append(results, memory.Result{ID: id, Status: "error", Error: msg})
 			continue
 		}
-		results = append(results, s.memory.Push(r.Context(), []memory.Change{c}, user.ID)...)
+		results = append(results, s.memory.Push(s.guarded(r), []memory.Change{c}, user.ID)...)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"results": results})
 }
@@ -91,7 +99,7 @@ func (s *Server) createMemory(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &m) || !s.allowMemory(w, r, m.ID, m.Workspace) {
 		return
 	}
-	res := s.memory.Upsert(r.Context(), m, 0, auth.UserFrom(r.Context()).ID)
+	res := s.memory.Upsert(s.guarded(r), m, 0, auth.UserFrom(r.Context()).ID)
 	if res.Status == "ok" {
 		created, err := s.memory.Get(r.Context(), res.ID)
 		if err != nil {
@@ -116,7 +124,7 @@ func (s *Server) updateMemory(w http.ResponseWriter, r *http.Request) {
 	if !s.allowMemory(w, r, body.Memory.ID, body.Memory.Workspace) {
 		return
 	}
-	writeResult(w, s.memory.Upsert(r.Context(), body.Memory, body.BaseRev, auth.UserFrom(r.Context()).ID))
+	writeResult(w, s.memory.Upsert(s.guarded(r), body.Memory, body.BaseRev, auth.UserFrom(r.Context()).ID))
 }
 
 func (s *Server) deleteMemory(w http.ResponseWriter, r *http.Request) {
@@ -124,7 +132,7 @@ func (s *Server) deleteMemory(w http.ResponseWriter, r *http.Request) {
 	if !s.allowMemory(w, r, r.PathValue("id"), nil) {
 		return
 	}
-	res := s.memory.Delete(r.Context(), r.PathValue("id"), baseRev, auth.UserFrom(r.Context()).ID)
+	res := s.memory.Delete(s.guarded(r), r.PathValue("id"), baseRev, auth.UserFrom(r.Context()).ID)
 	if res.Status == "error" && res.Error == memory.ErrNotFound.Error() {
 		fail(w, memory.ErrNotFound)
 		return
@@ -154,7 +162,21 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	a, err := s.access(r)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	// versões de quando a memória estava num projeto de que você não é membro ficam de fora
+	visibleItems := make([]map[string]any, 0, len(items))
+	for _, it := range items {
+		data, _ := it["data"].(map[string]any)
+		ws, _ := data["workspace"].(string)
+		if ws == "" || a.Can(&ws) {
+			visibleItems = append(visibleItems, it)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": visibleItems})
 }
 
 func (s *Server) claim(w http.ResponseWriter, r *http.Request) {
@@ -184,14 +206,17 @@ func (s *Server) links(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	// memórias de projetos de que não é membro aparecem só como id (sem conteúdo)
-	for _, list := range [][]memory.Linked{links.Outgoing, links.Incoming, links.Impact} {
-		for i := range list {
-			if m := list[i].Memory; m != nil && !a.Can(m.Workspace) {
-				list[i].Memory = nil
+	// vínculos com memórias de projetos de que não é membro somem (nem o id: ele já revela que existe)
+	hide := func(list []memory.Linked) []memory.Linked {
+		out := make([]memory.Linked, 0, len(list))
+		for _, l := range list {
+			if l.Memory == nil || a.Can(l.Memory.Workspace) {
+				out = append(out, l)
 			}
 		}
+		return out
 	}
+	links.Outgoing, links.Incoming, links.Impact = hide(links.Outgoing), hide(links.Incoming), hide(links.Impact)
 	writeJSON(w, http.StatusOK, links)
 }
 
@@ -203,6 +228,10 @@ func (s *Server) markReview(w http.ResponseWriter, r *http.Request) {
 		Source string   `json:"source"`
 	}
 	if !decode(w, r, &body) {
+		return
+	}
+	if len(body.IDs) > maxBatch {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("No máximo %d memórias por pedido.", maxBatch))
 		return
 	}
 	user := auth.UserFrom(r.Context())

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -78,6 +79,15 @@ func allowed(a memory.Access, items []memory.Memory) []memory.Memory {
 		}
 	}
 	return out
+}
+
+// guarded: o contexto das escritas com a regra de acesso (conferida de novo dentro da transação).
+func (s *Server) guarded(r *http.Request) context.Context {
+	a, err := s.access(r)
+	if err != nil {
+		return r.Context()
+	}
+	return memory.WithGuard(r.Context(), a.Can)
 }
 
 // visible: só os workspaces permitidos (pull e listagens).

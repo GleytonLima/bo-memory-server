@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -30,6 +31,9 @@ func (s *Store) Upsert(ctx context.Context, m Memory, baseRev int64, userID stri
 		cur, err := get(ctx, tx, m.ID, true)
 		if err != nil && !errors.Is(err, ErrNotFound) {
 			return fail(m.ID, err)
+		}
+		if !allowed(ctx, cur) {
+			return fail(m.ID, ErrForbidden)
 		}
 		if cur != nil && cur.Rev != baseRev {
 			if SameContent(cur, &m) {
@@ -61,6 +65,9 @@ func (s *Store) Delete(ctx context.Context, id string, baseRev int64, userID str
 		cur, err := get(ctx, tx, id, true)
 		if err != nil {
 			return fail(id, err)
+		}
+		if !allowed(ctx, cur) {
+			return fail(id, ErrForbidden)
 		}
 		if cur.Deleted {
 			return Result{ID: id, Status: "ok", Rev: cur.Rev}
@@ -123,7 +130,8 @@ func (s *Store) writeError(ctx context.Context, m *Memory, err error) Result {
 	if errors.As(err, &pg) && pg.Code == "23514" { // CHECK violado
 		return fail(m.ID, fmt.Errorf("dados inválidos (%s)", pg.ConstraintName))
 	}
-	return fail(m.ID, err)
+	log.Printf("gravar memória %s: %v", m.ID, err)
+	return fail(m.ID, errors.New("não foi possível gravar a memória"))
 }
 
 func saveHistory(ctx context.Context, tx pgx.Tx, cur *Memory, userID string) error {

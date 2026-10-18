@@ -1,7 +1,10 @@
 package api
 
 import (
+	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v5/pgconn"
+	"log"
 	"net/http"
 	"time"
 
@@ -55,7 +58,12 @@ func (s *Server) setMembers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listFolders(w http.ResponseWriter, r *http.Request) {
-	items, err := s.memory.Folders(r.Context())
+	a, err := s.access(r)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	items, err := s.memory.Folders(r.Context(), a.Can)
 	if err != nil {
 		fail(w, err)
 		return
@@ -95,7 +103,16 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 	}
 	u, err := s.auth.CreateUser(r.Context(), body.Name, body.Email, body.IsAdmin)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		var pg *pgconn.PgError
+		switch {
+		case errors.As(err, &pg) && pg.Code == "23505":
+			writeError(w, http.StatusBadRequest, "Já existe um usuário com este e-mail.")
+		case errors.As(err, &pg):
+			log.Printf("criar usuário: %v", err)
+			writeError(w, http.StatusBadRequest, "Não foi possível criar o usuário.")
+		default:
+			writeError(w, http.StatusBadRequest, err.Error()) // validação (nome/e-mail)
+		}
 		return
 	}
 	writeJSON(w, http.StatusCreated, u)

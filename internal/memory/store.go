@@ -71,7 +71,9 @@ func get(ctx context.Context, q db.Querier, id string, forUpdate bool) (*Memory,
 }
 
 // Get devolve uma memória (inclusive apagada) pelo id.
-func (s *Store) Get(ctx context.Context, id string) (*Memory, error) { return get(ctx, s.pool, id, false) }
+func (s *Store) Get(ctx context.Context, id string) (*Memory, error) {
+	return get(ctx, s.pool, id, false)
+}
 
 // History devolve as versões anteriores da memória, da mais recente para a mais antiga.
 func (s *Store) History(ctx context.Context, id string) ([]map[string]any, error) {

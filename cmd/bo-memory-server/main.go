@@ -29,6 +29,11 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	cfg := config.Load()
+	if warning, err := cfg.Check(); err != nil {
+		log.Fatal(err)
+	} else if warning != "" {
+		log.Print(warning)
+	}
 	cmd, args := "serve", os.Args[1:]
 	if len(args) > 0 {
 		cmd, args = args[0], args[1:]

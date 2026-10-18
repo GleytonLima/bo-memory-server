@@ -29,7 +29,9 @@ func env(key, fallback string) string {
 	return fallback
 }
 
-func list(key, fallback string) []string { return strings.Fields(strings.ReplaceAll(env(key, fallback), ",", " ")) }
+func list(key, fallback string) []string {
+	return strings.Fields(strings.ReplaceAll(env(key, fallback), ",", " "))
+}
 
 func LoadConfig() Config {
 	ttl, err := time.ParseDuration(env("BO_SESSION_TTL", "12h"))

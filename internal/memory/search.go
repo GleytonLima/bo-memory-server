@@ -20,10 +20,15 @@ type Query struct {
 var termRe = regexp.MustCompile(`[\p{L}\p{N}_-]+`)
 
 // tsQuery converte texto livre em consulta de prefixo: "postgres trans" → "postgres:* | trans:*".
+var hasWord = regexp.MustCompile(`[\p{L}\p{N}]`)
+
+// tsQuery: termos com ao menos uma letra ou número (só "-" ou "_" quebraria o to_tsquery), como prefixo.
 func tsQuery(q string) string {
-	terms := termRe.FindAllString(q, 20)
-	for i, t := range terms {
-		terms[i] = t + ":*"
+	terms := []string{}
+	for _, t := range termRe.FindAllString(q, 20) {
+		if t = strings.Trim(t, "-_"); hasWord.MatchString(t) {
+			terms = append(terms, t+":*")
+		}
 	}
 	return strings.Join(terms, " | ")
 }
@@ -75,8 +80,8 @@ func (s *Store) List(ctx context.Context, q Query) ([]Memory, error) {
 }
 
 type WorkspaceInfo struct {
-	Key      string `json:"key"`
-	Name     string `json:"name"`
+	Key        string `json:"key"`
+	Name       string `json:"name"`
 	Memories   int    `json:"memories"`
 	Restricted bool   `json:"restricted"` // tem lista de membros
 }
@@ -121,22 +126,32 @@ type FolderInfo struct {
 }
 
 // Folders lista as pastas (remotes) que têm memórias vivas — para a web navegar por repositório.
-func (s *Store) Folders(ctx context.Context) ([]FolderInfo, error) {
+// `can`: só conta memórias de workspaces visíveis (pasta só de projeto restrito nem aparece).
+func (s *Store) Folders(ctx context.Context, can func(*string) bool) ([]FolderInfo, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT folder, count(*) FROM memories
+		SELECT folder, workspace, count(*) FROM memories
 		WHERE scope = 'folder' AND NOT deleted AND superseded_by IS NULL
-		GROUP BY folder ORDER BY folder`)
+		GROUP BY folder, workspace ORDER BY folder`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	out := []FolderInfo{}
 	for rows.Next() {
-		var f FolderInfo
-		if err := rows.Scan(&f.Folder, &f.Memories); err != nil {
+		var folder string
+		var ws *string
+		var n int
+		if err := rows.Scan(&folder, &ws, &n); err != nil {
 			return nil, err
 		}
-		out = append(out, f)
+		if !can(ws) {
+			continue
+		}
+		if last := len(out) - 1; last >= 0 && out[last].Folder == folder {
+			out[last].Memories += n
+		} else {
+			out = append(out, FolderInfo{Folder: folder, Memories: n})
+		}
 	}
 	return out, rows.Err()
 }

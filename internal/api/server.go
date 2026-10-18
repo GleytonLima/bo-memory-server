@@ -58,10 +58,13 @@ func Handler(authStore *auth.Store, memStore *memory.Store, webDir string, flow 
 		writeJSON(w, http.StatusOK, cfg)
 	})
 	if flow != nil {
-		root.HandleFunc("GET /auth/login", flow.Login)
-		root.HandleFunc("GET /auth/callback", flow.Callback)
+		// login: cada GET grava um estado no banco — 30 por minuto por IP bastam para gente de verdade
+		perIP := newLimiter(30, 30)
+		root.Handle("GET /auth/login", perIP.wrap(byIP, http.HandlerFunc(flow.Login)))
+		root.Handle("GET /auth/callback", perIP.wrap(byIP, http.HandlerFunc(flow.Callback)))
 	}
-	root.Handle("/v1/", auth.Middleware(authStore, v1))
+	// API: 1200 por minuto por token (rajada de 300) — o sync do desktop faz poucas por minuto
+	root.Handle("/v1/", newLimiter(1200, 300).wrap(byToken, auth.Middleware(authStore, v1)))
 	root.Handle("/", web.Handler(webDir))
 	return secureHeaders(root)
 }

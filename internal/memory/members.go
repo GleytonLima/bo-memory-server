@@ -29,7 +29,7 @@ func (a Access) Can(ws *string) bool {
 func (s *Store) AccessFor(ctx context.Context, email string, admin bool) (Access, error) {
 	a := Access{admin: admin, allowed: map[string]bool{}}
 	rows, err := s.pool.Query(ctx, `
-		SELECT workspace, bool_or(email_pattern = $1 OR (left(email_pattern, 2) = '*@' AND $1 LIKE '%' || substr(email_pattern, 2)))
+		SELECT workspace, bool_or(email_pattern = $1 OR (left(email_pattern, 2) = '*@' AND right($1, length(email_pattern) - 1) = substr(email_pattern, 2)))
 		FROM workspace_members GROUP BY workspace`, strings.ToLower(email))
 	if err != nil {
 		return a, err

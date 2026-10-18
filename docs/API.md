@@ -201,6 +201,44 @@ por workspace, cada um com `version` (controle otimista, como o `rev` das memór
 - `GET /v1/workspaces` diz, em cada item, se há projeto (`hasProject`) — é a lista "Abrir projeto
   do servidor" da máquina nova.
 
+## Quadro de tarefas (do workspace)
+
+O quadro é do time: toda tarefa de um projeto com `syncKey` sincroniza pelo workspace, com o mesmo
+esquema de `rev` das memórias (sequência própria das tarefas).
+
+```json
+{
+  "workspace": "bash-organizer",
+  "id": "k3j9x2ab",                 // gerado pelo CLIENTE (texto, até 64) — permite criar offline
+  "key": "BO-27",                   // único entre as tarefas vivas do workspace (o servidor garante)
+  "rev": 88,
+  "deleted": false,
+  "task": {                          // conteúdo: o servidor guarda como veio (até 256 KiB)
+    "title": "…", "description": "…", "columnId": "c2", "parentId": null,
+    "progress": 40, "tags": ["sync"], "memoryRefs": ["uuid"], "repo": "…", "branch": "…",
+    "createdAt": 1760000000000, "updatedAt": 1760000500000,
+    "history": [{ "at": 1760000000000, "by": "Gleyton", "type": "created", "text": "…" }]
+  },
+  "updatedBy": { "id": "uuid", "name": "Gleyton" }, "updatedAt": "…"
+}
+```
+
+- **Pull** — `POST /v1/tasks/pull` `{ since, workspaces }` → `{ items, rev, more }` (tarefas com
+  `rev > since` dos workspaces pedidos, inclusive apagadas; máx. 500 por página). Workspaces
+  restritos de que você não é membro ficam de fora.
+- **Push** — `POST /v1/tasks/push` `{ changes: [{ op: "upsert", workspace, baseRev, id, key, task }
+  | { op: "delete", workspace, baseRev, id }] }` → `{ results }` na mesma ordem:
+  `{ id, status: "ok", rev, key }`, `{ id, status: "conflict", server }` ou `{ id, status: "error", error }`.
+  Conflito = `baseRev` diferente do `rev` atual (conteúdo idêntico não é conflito).
+- **Chave:** se a `key` enviada já é de outra tarefa viva do workspace (duas máquinas criaram
+  offline), o servidor dá a próxima livre do mesmo prefixo e devolve em `key` — o cliente renomeia.
+- **Conflito no desktop** não pergunta: fusão em três vias campo a campo contra a última versão
+  recebida (quem mudou o campo vence; os dois mudaram → a sua) e o histórico é a união.
+- **No histórico**, `by` é o nome de quem fez (o desktop troca "você" pelo seu nome ao enviar e de
+  volta ao receber); `agente` continua `agente`.
+- Fica só local (não sincroniza): terminal de origem, "Em espera" (a resposta vai para um terminal
+  da máquina que perguntou) e as sugestões de memória do agente.
+
 ## API para a web (e scripts)
 
 | Método | Rota | Descrição |
@@ -223,6 +261,7 @@ por workspace, cada um com `version` (controle otimista, como o `rev` das memór
 | `GET/PUT` | `/v1/workspaces/{key}/members` | membros do workspace (admin): `{ members: ["ana@x.com", "*@x.com"] }`; vazio = aberto |
 | `GET/PUT` | `/v1/workspaces/{key}/project` | definição do projeto (do time): pastas e colunas; `PUT` com `baseVersion` → `409` em conflito |
 | `GET/PUT` | `/v1/workspaces/{key}/layout` | seu layout no projeto: grupos e terminais; `PUT` com `baseVersion` |
+| `POST` | `/v1/tasks/pull`, `/v1/tasks/push` | quadro de tarefas do workspace (ver "Quadro de tarefas") |
 | `POST` | `/v1/logout` | revoga o token em uso (sair) |
 | `GET` | `/auth/config`, `/auth/login`, `/auth/callback` | SSO (sem auth; ver acima) |
 

@@ -22,6 +22,12 @@ Mudou o contrato? Atualize este arquivo primeiro.
   `GET /auth/callback`) e devolve à web uma **sessão** (`bos_…`, expira; padrão 12 h) no fragmento
   da URL: `/#sso=<sessão>` (ou `/#sso-error=<mensagem>`). `GET /auth/config` (sem auth) diz
   `{ sso, provider, personalTokens }`; `POST /v1/logout` revoga o token em uso.
+- **Desktop (app nativo, RFC 8252)**: o app abre no navegador do sistema
+  `GET /auth/desktop?port=<p>&challenge=<S256 do verificador>` (porta 1024–65535 de um endereço
+  local dele). O login segue igual ao da web; no fim o navegador vai para
+  `http://127.0.0.1:<p>/callback?code=<código>` (ou `?error=`) — um código de uso único que
+  vale 2 min, nunca a sessão. O app troca em `POST /auth/desktop/token { code, verifier }` →
+  `{ session }` (`400` se o código expirou, já foi usado ou o verificador não bate).
 - **Tokens pessoais** (`bom_…`, sem validade): continuam para scripts, CI e o desktop.
   `BO_PERSONAL_TOKENS=false` faz o servidor aceitar só sessões SSO.
 - **Membros por projeto**: cada workspace pode ter uma lista de e-mails ou domínios

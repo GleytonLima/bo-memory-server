@@ -73,6 +73,9 @@ func Handler(authStore *auth.Store, memStore *memory.Store, webDir string, flow 
 		perIP := newLimiter(30, 30)
 		root.Handle("GET /auth/login", perIP.wrap(byIP, http.HandlerFunc(flow.Login)))
 		root.Handle("GET /auth/callback", perIP.wrap(byIP, http.HandlerFunc(flow.Callback)))
+		// app desktop (RFC 8252): login pelo navegador do sistema e troca do código de uso único
+		root.Handle("GET /auth/desktop", perIP.wrap(byIP, http.HandlerFunc(flow.DesktopLogin)))
+		root.Handle("POST /auth/desktop/token", perIP.wrap(byIP, http.HandlerFunc(flow.DesktopToken)))
 	}
 	// API: 1200 por minuto por token (rajada de 300) — o sync do desktop faz poucas por minuto
 	root.Handle("/v1/", newLimiter(1200, 300).wrap(byToken, auth.Middleware(authStore, v1)))

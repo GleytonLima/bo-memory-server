@@ -29,6 +29,13 @@ Tokens pessoais (`bom_…`) continuam valendo para scripts, CI e o desktop.
 - **Com lista:** só membros e admins leem, sincronizam e escrevem nele.
 - **Sem lista:** o workspace é aberto a todos os usuários.
 
+## Desktop (Bash Organizer)
+
+O app entra pelo navegador do sistema, como o `gh auth login` e o VS Code (RFC 8252): ele sobe um
+endereço local temporário (`127.0.0.1`, porta aleatória), abre `/auth/desktop` no navegador e
+recebe ali um código de uso único, que troca pela sessão provando o PKCE (`POST /auth/desktop/token`).
+O app nunca vê a senha e não há nada a configurar no provedor além do `/auth/callback` de sempre.
+
 ## Variáveis
 
 | Variável | Exemplo | Padrão |

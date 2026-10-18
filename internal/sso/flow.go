@@ -85,11 +85,16 @@ func StateHash(state string) string {
 
 // Start guarda o estado do login e devolve a URL do provedor (código + PKCE + nonce) e o state.
 func (f *Flow) Start(ctx context.Context, returnTo string) (target, state string, err error) {
+	return f.start(ctx, safeReturn(returnTo))
+}
+
+// start: `returnTo` já validado (caminho seguro da web ou o retorno do app desktop).
+func (f *Flow) start(ctx context.Context, returnTo string) (target, state string, err error) {
 	state, nonce, verifier := random(), random(), oauth2.GenerateVerifier()
 	if _, err := f.pool.Exec(ctx, `DELETE FROM sso_states WHERE created_at < now() - interval '`+stateTTL+`'`); err != nil {
 		return "", "", err
 	}
-	if _, err := f.pool.Exec(ctx, `INSERT INTO sso_states (state, verifier, nonce, return_to) VALUES ($1, $2, $3, $4)`, state, verifier, nonce, safeReturn(returnTo)); err != nil {
+	if _, err := f.pool.Exec(ctx, `INSERT INTO sso_states (state, verifier, nonce, return_to) VALUES ($1, $2, $3, $4)`, state, verifier, nonce, returnTo); err != nil {
 		return "", "", err
 	}
 	return f.oauth.AuthCodeURL(state, oidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier)), state, nil
@@ -97,44 +102,50 @@ func (f *Flow) Start(ctx context.Context, returnTo string) (target, state string
 
 // Finish troca o código, valida o ID token e devolve a sessão criada e o caminho de volta.
 func (f *Flow) Finish(ctx context.Context, state, code string) (session, returnTo string, err error) {
-	var verifier, nonce string
-	err = f.pool.QueryRow(ctx, `DELETE FROM sso_states WHERE state = $1 AND created_at > now() - interval '`+stateTTL+`' RETURNING verifier, nonce, return_to`, state).
-		Scan(&verifier, &nonce, &returnTo)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", "", ErrExpired
-	}
-	if err != nil {
-		return "", "", err
-	}
-	tok, err := f.oauth.Exchange(context.WithValue(ctx, oauth2.HTTPClient, idpClient), code, oauth2.VerifierOption(verifier))
-	if err != nil {
-		return "", "", fmt.Errorf("o provedor recusou o código: %w", err)
-	}
-	raw, _ := tok.Extra("id_token").(string)
-	if raw == "" {
-		return "", "", errors.New("o provedor não devolveu um ID token (inclua o escopo openid)")
-	}
-	idt, err := f.verifier.Verify(ctx, raw)
-	if err != nil {
-		return "", "", fmt.Errorf("ID token inválido: %w", err)
-	}
-	if idt.Nonce != nonce {
-		return "", "", errors.New("ID token com nonce diferente do login")
-	}
-	var claims map[string]any
-	if err := idt.Claims(&claims); err != nil {
-		return "", "", err
-	}
-	// e-mail não verificado não identifica ninguém (nem dá acesso a "*@dominio" ou à conta com esse e-mail)
-	if v, ok := claims["email_verified"]; ok && v != true && v != "true" {
-		return "", "", ErrUnverified
-	}
-	user, err := f.users.UpsertSSOUser(ctx, f.identity(idt.Issuer, idt.Subject, claims))
+	user, returnTo, err := f.finishUser(ctx, state, code)
 	if err != nil {
 		return "", "", err
 	}
 	session, err = f.users.CreateSession(ctx, user.ID, f.cfg.SessionTTL)
 	return session, returnTo, err
+}
+
+// finishUser: a parte comum à web e ao desktop — troca o código e valida o ID token; devolve quem é.
+func (f *Flow) finishUser(ctx context.Context, state, code string) (user auth.User, returnTo string, err error) {
+	var verifier, nonce string
+	err = f.pool.QueryRow(ctx, `DELETE FROM sso_states WHERE state = $1 AND created_at > now() - interval '`+stateTTL+`' RETURNING verifier, nonce, return_to`, state).
+		Scan(&verifier, &nonce, &returnTo)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return auth.User{}, "", ErrExpired
+	}
+	if err != nil {
+		return auth.User{}, "", err
+	}
+	tok, err := f.oauth.Exchange(context.WithValue(ctx, oauth2.HTTPClient, idpClient), code, oauth2.VerifierOption(verifier))
+	if err != nil {
+		return auth.User{}, "", fmt.Errorf("o provedor recusou o código: %w", err)
+	}
+	raw, _ := tok.Extra("id_token").(string)
+	if raw == "" {
+		return auth.User{}, "", errors.New("o provedor não devolveu um ID token (inclua o escopo openid)")
+	}
+	idt, err := f.verifier.Verify(ctx, raw)
+	if err != nil {
+		return auth.User{}, "", fmt.Errorf("ID token inválido: %w", err)
+	}
+	if idt.Nonce != nonce {
+		return auth.User{}, "", errors.New("ID token com nonce diferente do login")
+	}
+	var claims map[string]any
+	if err := idt.Claims(&claims); err != nil {
+		return auth.User{}, "", err
+	}
+	// e-mail não verificado não identifica ninguém (nem dá acesso a "*@dominio" ou à conta com esse e-mail)
+	if v, ok := claims["email_verified"]; ok && v != true && v != "true" {
+		return auth.User{}, "", ErrUnverified
+	}
+	user, err = f.users.UpsertSSOUser(ctx, f.identity(idt.Issuer, idt.Subject, claims))
+	return user, returnTo, err
 }
 
 // identity lê e-mail, nome e employeeid das claims configuradas (a primeira presente vale).

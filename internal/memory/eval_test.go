@@ -23,6 +23,7 @@ type evalSet struct {
 		Tags          []string
 		SupersededBy  string `json:"supersededBy"`
 		Review        bool
+		Task, Status  string
 	}
 	Queries []struct {
 		Q      string
@@ -83,6 +84,12 @@ func seedEval(t *testing.T, store *memory.Store, set evalSet) map[string]string 
 	}
 	for _, m := range set.Memories {
 		mem := memory.Memory{ID: ids[m.K], Kind: m.Kind, Scope: "global", Text: m.Text, Tags: m.Tags}
+		if m.Kind == "progress" { // progresso é do projeto (workspace "eval", o das perguntas)
+			mem.Scope, mem.Workspace, mem.TaskKey = "project", ptr("eval"), ptr(m.Task)
+		}
+		if m.Status != "" {
+			mem.Status = ptr(m.Status)
+		}
 		if m.SupersededBy != "" {
 			s := ids[m.SupersededBy]
 			mem.SupersededBy = &s
@@ -103,7 +110,7 @@ func seedEval(t *testing.T, store *memory.Store, set evalSet) map[string]string 
 // evalPosition: posição (1…) da primeira memória esperada no resultado; 0 = não veio.
 func evalPosition(t *testing.T, store *memory.Store, q string, expect []string, keys map[string]string) (int, []string) {
 	t.Helper()
-	found, err := store.Search(context.Background(), memory.Query{Q: q, Limit: 10})
+	found, err := store.Search(context.Background(), memory.Query{Workspace: "eval", Q: q, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}

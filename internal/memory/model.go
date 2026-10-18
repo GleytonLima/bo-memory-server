@@ -16,8 +16,9 @@ import (
 const DecisionMax = 280
 
 var (
-	kinds      = []string{"note", "decision", "progress", "idea", "howto"}
-	ideaStates = []string{"open", "converted", "discarded"}
+	kinds          = []string{"note", "decision", "progress", "idea", "howto"}
+	ideaStates     = []string{"open", "converted", "discarded"}
+	progressStates = []string{"open", "done"} // done = tarefa concluída: progresso arquivado
 )
 
 type Author struct {
@@ -39,7 +40,7 @@ type Memory struct {
 	Progress     json.RawMessage `json:"progress"`
 	Refs         []Ref           `json:"refs"`   // vínculos para outras memórias (ver refs.go)
 	Review       json.RawMessage `json:"review"` // marca "a revisar": { reason, source, by, at }
-	Status       *string         `json:"status"` // ideia: open | converted | discarded
+	Status       *string         `json:"status"` // ideia: open | converted | discarded; progresso: open | done
 	Author       *Author         `json:"author"`
 	CreatedAt    time.Time       `json:"createdAt"`
 	UpdatedAt    time.Time       `json:"updatedAt"`
@@ -161,9 +162,16 @@ func jsonEq(a, b json.RawMessage) bool {
 	return json.Unmarshal(a, &x) == nil && json.Unmarshal(b, &y) == nil && fmt.Sprint(x) == fmt.Sprint(y)
 }
 
-// normalizeStatus: ideia nasce "open" e só aceita os estados conhecidos; os outros tipos não têm estado.
+// normalizeStatus: ideia nasce "open" e só aceita os estados conhecidos; progresso pode ficar sem
+// estado (aberto), "open" ou "done"; os outros tipos não têm estado.
 func (m *Memory) normalizeStatus() error {
 	m.Status = emptyToNil(m.Status)
+	if m.Kind == "progress" {
+		if m.Status != nil && !slices.Contains(progressStates, *m.Status) {
+			return invalid("Estado de progresso inválido: %q (use %s).", *m.Status, strings.Join(progressStates, ", "))
+		}
+		return nil
+	}
 	if m.Kind != "idea" {
 		m.Status = nil
 		return nil

@@ -133,3 +133,44 @@ func TestSupersede(t *testing.T) {
 		t.Fatalf("busca por prefixo/sem caixa deveria achar a nova: %d", len(again))
 	}
 }
+
+// Progresso de tarefa concluída ("done") sai da busca padrão e fica no filtro de progresso; estado
+// inválido é recusado; reabrir ("open") traz de volta.
+func TestProgressDoneLeavesDefaultSearch(t *testing.T) {
+	s, user := setup(t)
+	p := memory.Memory{Kind: "progress", Workspace: ptr("app"), TaskKey: ptr("BO-30"), Text: "BO-30: deploy pela metade",
+		Progress: json.RawMessage(`{"status":"falta aprovar"}`)}
+	r := s.Upsert(ctx, p, 0, user)
+	texts := func(q memory.Query) int {
+		items, err := s.List(ctx, q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(items)
+	}
+	if texts(memory.Query{Workspace: "app", Q: "deploy"}) != 1 {
+		t.Fatal("progresso aberto aparece na busca")
+	}
+	cur, _ := s.Get(ctx, r.ID)
+	cur.Status = ptr("done")
+	if u := s.Upsert(ctx, *cur, cur.Rev, user); u.Status != "ok" {
+		t.Fatalf("arquivar: %+v", u)
+	}
+	if texts(memory.Query{Workspace: "app", Q: "deploy"}) != 0 || texts(memory.Query{Workspace: "app", Kind: "progress"}) != 1 {
+		t.Fatal("concluída: fora da busca padrão, dentro do filtro de progresso")
+	}
+	cur, _ = s.Get(ctx, r.ID)
+	cur.Status = ptr("perdido")
+	if u := s.Upsert(ctx, *cur, cur.Rev, user); u.Status != "error" {
+		t.Fatalf("estado inválido de progresso deveria ser recusado: %+v", u)
+	}
+	cur.Status = ptr("open")
+	if u := s.Upsert(ctx, *cur, cur.Rev, user); u.Status != "ok" || texts(memory.Query{Workspace: "app", Q: "deploy"}) != 1 {
+		t.Fatalf("reaberta volta à busca: %+v", u)
+	}
+	n := note("app", "nota")
+	n.Status = ptr("done")
+	if u := s.Upsert(ctx, n, 0, user); u.Status != "ok" {
+		t.Fatalf("nota com estado: o estado é ignorado: %+v", u)
+	}
+}

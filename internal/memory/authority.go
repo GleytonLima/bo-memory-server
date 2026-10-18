@@ -15,7 +15,7 @@ func authority(m *Memory) float64 {
 	} else if len(m.Review) > 0 && string(m.Review) != "null" {
 		f = min(f, 0.8)
 	}
-	if m.Kind == "idea" && m.Status != nil && *m.Status != "open" {
+	if m.Status != nil && *m.Status != "open" { // ideia fechada, progresso de tarefa concluída
 		f = min(f, 0.8)
 	}
 	return max(0.55, min(1.5, f))

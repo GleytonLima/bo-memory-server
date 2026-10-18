@@ -78,7 +78,7 @@ func filters(q Query) *where {
 	if q.NeedsReview {
 		w.add("m.review IS NOT NULL")
 	}
-	if q.Kind != "idea" { // ideias fechadas (viraram tarefa / descartadas) só no filtro de ideias
+	if q.Kind != "idea" && q.Kind != "progress" { // ideias fechadas e progresso de tarefa concluída: só no filtro do próprio tipo
 		w.add("coalesce(m.status, 'open') = 'open'")
 	}
 	return w

@@ -30,6 +30,7 @@ Mudou o contrato? Atualize este arquivo primeiro.
   a mudança volta como `error`; nas rotas da web, `403`. Globais e pastas não mudam.
 - Todo request (exceto `GET /healthz` e os arquivos estáticos da web) usa `Authorization: Bearer <token>`.
 - **Token por dev.** O servidor guarda só o hash (SHA-256). Um token pertence a um usuário; usuários `admin` gerenciam usuários e tokens.
+  Emitido pela API/web (`POST /v1/tokens`, corpo `{ name, userId?, expiresInDays? }`), todo token vence: `expiresInDays` de 1 a 365, padrão `BO_TOKEN_TTL_DAYS` (90). Só o CLI do operador emite sem validade (o 1º admin).
 - Primeiro acesso: `bo-memory-server admin create --name "Fulano" --email f@x` imprime um token de admin (uma única vez).
 - Erros: `401` sem token/token inválido ou revogado; `403` sem permissão.
 

@@ -43,6 +43,7 @@ Tokens pessoais (`bom_…`) continuam valendo para scripts, CI e o desktop.
 | `BO_OIDC_EMPLOYEE_ID_CLAIM` | claims tentadas para o employeeid | `employeeid employee_id employeeId` |
 | `BO_SESSION_TTL` | validade da sessão | `12h` |
 | `BO_PERSONAL_TOKENS` | `false` = só sessões SSO | `true` |
+| `BO_TOKEN_TTL_DAYS` | validade padrão (dias) dos tokens pessoais emitidos pela API/web (máx. 365) | `90` |
 
 A **redirect URI** a registrar no provedor é `BO_PUBLIC_URL` + `/auth/callback`. Em produção,
 use HTTPS.

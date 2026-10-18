@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"time"
 
 	"bo-memory-server/internal/api"
@@ -43,6 +44,9 @@ func main() {
 		must(db.Migrate(ctx, pool, "up"))
 		users := auth.NewStore(pool)
 		users.PersonalTokens = os.Getenv("BO_PERSONAL_TOKENS") != "false"
+		if d, err := strconv.Atoi(os.Getenv("BO_TOKEN_TTL_DAYS")); err == nil && d > 0 {
+			users.PersonalTTL = time.Duration(d) * 24 * time.Hour
+		}
 		var flow *sso.Flow
 		if sc := sso.LoadConfig(); sc.Enabled() {
 			flow, err = sso.New(ctx, sc, pool, users)

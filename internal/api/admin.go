@@ -1,7 +1,9 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
+	"time"
 
 	"bo-memory-server/internal/auth"
 )
@@ -114,14 +116,26 @@ func (s *Server) listTokens(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
+const maxTokenDays = 365
+
 // createToken: para si mesmo; o admin pode emitir para outro usuário (userId). O valor só aparece aqui.
 func (s *Server) createToken(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name   string `json:"name"`
-		UserID string `json:"userId"`
+		Name          string `json:"name"`
+		UserID        string `json:"userId"`
+		ExpiresInDays int    `json:"expiresInDays"` // 1 a 365; 0 = o padrão (BO_TOKEN_TTL_DAYS)
 	}
 	if !decode(w, r, &body) {
 		return
+	}
+	// pela API, qualquer token vence: uma sessão SSO não vira acesso eterno (quem sai da empresa perde o acesso)
+	ttl := s.auth.PersonalTTL
+	if body.ExpiresInDays != 0 {
+		if body.ExpiresInDays < 1 || body.ExpiresInDays > maxTokenDays {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("Validade entre 1 e %d dias.", maxTokenDays))
+			return
+		}
+		ttl = time.Duration(body.ExpiresInDays) * 24 * time.Hour
 	}
 	user := auth.UserFrom(r.Context())
 	target := user.ID
@@ -132,12 +146,12 @@ func (s *Server) createToken(w http.ResponseWriter, r *http.Request) {
 		}
 		target = body.UserID
 	}
-	token, id, err := s.auth.CreateToken(r.Context(), target, body.Name)
+	token, id, expiresAt, err := s.auth.CreateTokenFor(r.Context(), target, body.Name, ttl)
 	if err != nil {
 		fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]string{"id": id, "token": token})
+	writeJSON(w, http.StatusCreated, map[string]any{"id": id, "token": token, "expiresAt": expiresAt})
 }
 
 func (s *Server) revokeToken(w http.ResponseWriter, r *http.Request) {

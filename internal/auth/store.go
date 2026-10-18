@@ -37,9 +37,13 @@ type Store struct {
 	pool *pgxpool.Pool
 	// PersonalTokens: tokens pessoais valem (padrão). Com SSO adotado, pode-se exigir só sessões SSO.
 	PersonalTokens bool
+	// PersonalTTL: validade padrão dos tokens pessoais emitidos pela API (BO_TOKEN_TTL_DAYS; 90 dias).
+	PersonalTTL time.Duration
 }
 
-func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool, PersonalTokens: true} }
+func NewStore(pool *pgxpool.Pool) *Store {
+	return &Store{pool: pool, PersonalTokens: true, PersonalTTL: 90 * 24 * time.Hour}
+}
 
 const userCols = `u.id, u.name, u.email, u.is_admin, coalesce(u.employee_id, ''), u.sso_subject IS NOT NULL`
 
@@ -71,14 +75,23 @@ func (s *Store) ListUsers(ctx context.Context) ([]User, error) {
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (User, error) { return scanUser(r) })
 }
 
-// CreateToken emite um token para o usuário; o valor só existe neste retorno.
+// CreateToken emite um token sem validade (CLI do operador: o 1º admin). Pela API, use CreateTokenFor.
 func (s *Store) CreateToken(ctx context.Context, userID, name string) (token string, id string, err error) {
+	token, id, _, err = s.CreateTokenFor(ctx, userID, name, 0)
+	return token, id, err
+}
+
+// CreateTokenFor emite um token que vence em `ttl` (0 = não vence); o valor só existe neste retorno.
+func (s *Store) CreateTokenFor(ctx context.Context, userID, name string, ttl time.Duration) (token, id string, expiresAt *time.Time, err error) {
 	token, hash := NewToken()
 	if strings.TrimSpace(name) == "" {
 		name = "token"
 	}
-	err = s.pool.QueryRow(ctx, `INSERT INTO tokens (user_id, name, hash) VALUES ($1, $2, $3) RETURNING id`, userID, name, hash).Scan(&id)
-	return token, id, err
+	err = s.pool.QueryRow(ctx, `
+		INSERT INTO tokens (user_id, name, hash, expires_at)
+		VALUES ($1, $2, $3, CASE WHEN $4::bigint > 0 THEN now() + make_interval(secs => $4::bigint) END)
+		RETURNING id, expires_at`, userID, name, hash, int64(ttl.Seconds())).Scan(&id, &expiresAt)
+	return token, id, expiresAt, err
 }
 
 // UserByToken valida o token (não revogado, não expirado, do tipo aceito, usuário ativo) e registra o uso.

@@ -154,7 +154,7 @@ Usuários de teste (senha `bo-teste-123`):
   confiável. Logins com `email_verified=false` são recusados.
 - **Banco:** defina `DATABASE_URL` com senha própria e `sslmode=require`; o padrão (`bo:bo`, sem TLS)
   é só para desenvolvimento. O `docker-compose.yml` publica Postgres e Keycloak só em 127.0.0.1.
-- **Go atualizado:** compile com o patch mais recente do Go e rode `govulncheck ./...`; a biblioteca
+- **Go atualizado:** o `go.mod` fixa o toolchain (hoje go1.27.2); suba o patch e rode `govulncheck ./...`; a biblioteca
   padrão (net/http, crypto/x509) recebe correções de segurança com frequência.
 - O servidor já envia CSP (`frame-ancestors 'none'`), `X-Frame-Options`, `nosniff`,
   `Referrer-Policy: no-referrer`, tem timeouts de leitura/escrita e só serve os arquivos da web

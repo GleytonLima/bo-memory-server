@@ -6,7 +6,9 @@
   (`auth`, `memory`, `api`, `db`, `web`, `config`).
 - Esquema do banco só por migrações goose novas em `internal/db/migrations`; nunca editar uma
   já aplicada.
-- Go 1.24 fixado: rode com `GOTOOLCHAIN=local` para não baixar outro toolchain.
-- Testes: `GOTOOLCHAIN=local go test ./... -p 1` com `docker compose up -d` rodando.
+- Toolchain fixado no `go.mod` (`toolchain go1.27.2`): o `go` da máquina baixa essa versão sozinho
+  (não use `GOTOOLCHAIN=local`). Ao subir, prefira o último patch estável e rode
+  `govulncheck ./...` (instale com o mesmo toolchain): a biblioteca padrão recebe correções de segurança.
+- Testes: `go test ./... -p 1` com `docker compose up -d` rodando.
 - Mensagens de erro da API em português.
 - Commit na main ok; push só com "pode pushar" explícito.

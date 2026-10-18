@@ -19,6 +19,20 @@ Sem provedor, a busca continua só por texto (full-text, sem acentos) — nada m
   *reciprocal rank fusion* (k = 60), igual ao app desktop. A resposta traz `mode: "hybrid"` e
   marca com `match: "semantic"` o que veio só pelo significado (a web mostra "parecida").
   Se o provedor falhar na hora, volta `mode: "text"` com `warning` — a busca nunca quebra.
+- **Autoridade depois da fusão** (vale também para a busca só por texto, sobre o `ts_rank`): um
+  fator limitado a [0,55; 1,5] — decisão ×1,15, "como fazer" ×1,12, progresso ×0,9, ideia ×0,95;
+  "a revisar" no máximo ×0,8, substituída ×0,65, ideia fechada ×0,8 (`internal/memory/authority.go`,
+  mesmos pesos do app). A relevância continua mandando; nada sai do resultado.
+- **Stopwords** (PT e EN, sem acento) e letras soltas não entram na consulta por texto
+  (`internal/memory/stopwords.go`): com prefixo e OR, "de" virava `de:*` e casava com quase tudo.
+
+## Avaliação
+
+`go test ./internal/memory -run TestSearchEval -v` grava `testdata/search-eval.json` (o mesmo
+conjunto do app: `organizer/test/fixtures/search-eval.json`) e mede hit@1, hit@5 e MRR da busca por
+texto; o teste falha se ficar abaixo do piso. Mudou o ranking? Rode antes e depois. Em 2026-10-18:
+0,64 / 0,92 / 0,753 → com stopwords 0,88 / 1 / 0,94 → com autoridade 1 / 1 / 1 (25 perguntas; o
+conjunto saturou — aumente-o com perguntas reais antes de afinar pesos).
 - Vetor sem dimensão fixa e busca exata (sem índice ANN): trocar de modelo só reindexa, e para os
   volumes de um time (milhares de memórias) a busca exata é rápida e precisa.
 

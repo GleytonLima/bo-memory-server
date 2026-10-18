@@ -22,13 +22,18 @@ var termRe = regexp.MustCompile(`[\p{L}\p{N}_-]+`)
 // tsQuery converte texto livre em consulta de prefixo: "postgres trans" → "postgres:* | trans:*".
 var hasWord = regexp.MustCompile(`[\p{L}\p{N}]`)
 
-// tsQuery: termos com ao menos uma letra ou número (só "-" ou "_" quebraria o to_tsquery), como prefixo.
+// tsQuery: termos com ao menos uma letra ou número (só "-" ou "_" quebraria o to_tsquery), sem
+// stopwords (stopwords.go), como prefixo.
 func tsQuery(q string) string {
-	terms := []string{}
+	words := []string{}
 	for _, t := range termRe.FindAllString(q, 20) {
 		if t = strings.Trim(t, "-_"); hasWord.MatchString(t) {
-			terms = append(terms, t+":*")
+			words = append(words, t)
 		}
+	}
+	terms := contentTerms(words)
+	for i, t := range terms {
+		terms[i] = t + ":*"
 	}
 	return strings.Join(terms, " | ")
 }
@@ -86,16 +91,43 @@ func limitOf(q Query) int {
 	return q.Limit
 }
 
-// List lista/busca memórias vivas por texto (full-text, sem acentos, por prefixo); sem texto, as
-// mais recentes.
+// List lista/busca memórias vivas por texto (full-text, sem acentos, por prefixo), com a autoridade
+// (authority.go) aplicada sobre a relevância; sem texto, as mais recentes.
 func (s *Store) List(ctx context.Context, q Query) ([]Memory, error) {
-	w := filters(q)
-	order := "m.updated_at DESC"
-	if ts := tsQuery(q.Q); ts != "" {
-		p := w.arg(ts)
-		w.add(fmt.Sprintf("m.search @@ to_tsquery('simple', f_unaccent(%s))", p))
-		order = fmt.Sprintf("ts_rank(m.search, to_tsquery('simple', f_unaccent(%s))) DESC, m.updated_at DESC", p)
+	limit := limitOf(q)
+	if tsQuery(q.Q) == "" {
+		w := filters(q)
+		sql := fmt.Sprintf("%s WHERE %s ORDER BY m.updated_at DESC LIMIT %d", selectSQL, w.sql(), limit)
+		return collect(s.pool.Query(ctx, sql, w.args...))
 	}
-	sql := fmt.Sprintf("%s WHERE %s ORDER BY %s LIMIT %d", selectSQL, w.sql(), order, limitOf(q))
-	return collect(s.pool.Query(ctx, sql, w.args...))
+	items, rank, err := s.byText(ctx, q, authorityWindow(limit))
+	if err != nil {
+		return nil, err
+	}
+	return rerank(items, func(m *Memory) float64 { return rank[m.ID] }, limit), nil
+}
+
+// byText: as memórias que casam com o texto, da mais para a menos relevante (ts_rank), e a relevância.
+func (s *Store) byText(ctx context.Context, q Query, limit int) ([]Memory, map[string]float64, error) {
+	w := filters(q)
+	p := w.arg(tsQuery(q.Q))
+	tsq := fmt.Sprintf("to_tsquery('simple', f_unaccent(%s))", p)
+	w.add("m.search @@ " + tsq)
+	sql := fmt.Sprintf("SELECT %s, ts_rank(m.search, %s) AS rank %s WHERE %s ORDER BY rank DESC, m.updated_at DESC LIMIT %d",
+		memoryCols, tsq, memoryFrom, w.sql(), limit)
+	rows, err := s.pool.Query(ctx, sql, w.args...)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	items, rank := []Memory{}, map[string]float64{}
+	for rows.Next() {
+		var r float64
+		m, err := scan(rows, &r)
+		if err != nil {
+			return nil, nil, err
+		}
+		items, rank[m.ID] = append(items, *m), r
+	}
+	return items, rank, rows.Err()
 }

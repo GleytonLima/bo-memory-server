@@ -3,7 +3,6 @@ package memory
 import (
 	"context"
 	"log"
-	"sort"
 )
 
 // Semantic ranqueia por significado (pacote semantic); nil no Store = busca só por texto.
@@ -29,16 +28,15 @@ type Found struct {
 }
 
 // Search: com texto e busca semântica ligada, funde o ranking por texto com o por similaridade
-// (RRF); o que só o significado trouxe vem com Match = "semantic". Sem provedor (ou se ele falhar),
-// só texto.
+// (RRF) e aplica a autoridade (authority.go); o que só o significado trouxe vem com Match =
+// "semantic". Sem provedor (ou se ele falhar), só texto.
 func (s *Store) Search(ctx context.Context, q Query) (Found, error) {
 	if q.Q == "" || s.Semantic == nil {
 		items, err := s.List(ctx, q)
 		return Found{Items: items, Mode: modeOf(q, Text)}, err
 	}
 	limit := limitOf(q)
-	byText, err := s.List(ctx, Query{Workspace: q.Workspace, Scope: q.Scope, Kind: q.Kind, Folder: q.Folder, Q: q.Q,
-		IncludeSuperseded: q.IncludeSuperseded, NeedsReview: q.NeedsReview, Limit: candidates})
+	byText, _, err := s.byText(ctx, q, max(candidates, authorityWindow(limit)))
 	if err != nil {
 		return Found{}, err
 	}
@@ -46,18 +44,24 @@ func (s *Store) Search(ctx context.Context, q Query) (Found, error) {
 	similar, err := s.Semantic.Rank(ctx, q.Q, w.sql(), w.args, candidates)
 	if err != nil {
 		log.Printf("busca semântica: %v", err)
-		return Found{Items: head(byText, limit), Mode: Text, Warning: "Busca por significado indisponível agora; usando só o texto."}, nil
+		items, err := s.List(ctx, q)
+		return Found{Items: items, Mode: Text, Warning: "Busca por significado indisponível agora; usando só o texto."}, err
 	}
 	textIDs := make([]string, len(byText))
 	found := map[string]bool{}
 	for i, m := range byText {
 		textIDs[i], found[m.ID] = m.ID, true
 	}
-	ids := head(fuse(textIDs, similar), limit)
+	score := fuse(textIDs, similar)
+	ids := make([]string, 0, len(score))
+	for id := range score {
+		ids = append(ids, id)
+	}
 	items, err := s.inOrder(ctx, ids)
 	if err != nil {
 		return Found{}, err
 	}
+	items = rerank(items, func(m *Memory) float64 { return score[m.ID] }, limit)
 	for i := range items {
 		if !found[items[i].ID] {
 			items[i].Match = "semantic"
@@ -80,20 +84,15 @@ func head[T any](xs []T, n int) []T {
 	return xs
 }
 
-// fuse: reciprocal rank fusion — cada ranking soma 1/(k + posição); empate fica com a ordem do texto.
-func fuse(rankings ...[]string) []string {
+// fuse: reciprocal rank fusion — cada ranking soma 1/(k + posição). → id → escore.
+func fuse(rankings ...[]string) map[string]float64 {
 	score := map[string]float64{}
-	order := []string{}
 	for _, ids := range rankings {
 		for i, id := range ids {
-			if _, seen := score[id]; !seen {
-				order = append(order, id)
-			}
 			score[id] += 1 / float64(rrfK+i+1)
 		}
 	}
-	sort.SliceStable(order, func(a, b int) bool { return score[order[a]] > score[order[b]] })
-	return order
+	return score
 }
 
 // inOrder: as memórias (vivas) na ordem dos ids.

@@ -138,4 +138,24 @@ Usuários de teste (senha `bo-teste-123`):
   específico), ou o relógio do servidor está errado.
 - **"o provedor não informou … o e-mail":** ajuste `BO_OIDC_EMAIL_CLAIM` ou adicione a claim
   opcional `email`.
-- Os detalhes de cada falha ficam no log do servidor (`SSO callback: …`).
+- **"o login foi iniciado em outro navegador":** o callback chegou sem o cookie do `/auth/login`
+  (outro navegador, cookies bloqueados ou um link de login vindo de outra pessoa). Entre pelo botão.
+- **"o provedor não confirmou este e-mail (email_verified)":** a claim `email_verified` veio `false`.
+- A tela mostra só mensagens genéricas; os detalhes de cada falha ficam no log do servidor
+  (`SSO callback: …`).
+
+## Segurança em produção
+
+- **HTTPS sempre.** O token (Bearer) e as memórias do time trafegam em toda requisição. Atrás de
+  um proxy reverso, repasse `X-Forwarded-Proto: https` (liga o HSTS) e use `BO_PUBLIC_URL` com
+  `https://` (o cookie do login passa a ser `Secure`). O app desktop recusa `http://` fora de localhost.
+- **Emissor do seu tenant**, nunca `common`/`organizations`: o 1º login de um e-mail vincula a conta
+  criada pelo CLI com esse e-mail (é assim que o 1º admin entra), então o e-mail precisa ser
+  confiável. Logins com `email_verified=false` são recusados.
+- **Banco:** defina `DATABASE_URL` com senha própria e `sslmode=require`; o padrão (`bo:bo`, sem TLS)
+  é só para desenvolvimento. O `docker-compose.yml` publica Postgres e Keycloak só em 127.0.0.1.
+- **Go atualizado:** compile com o patch mais recente do Go e rode `govulncheck ./...`; a biblioteca
+  padrão (net/http, crypto/x509) recebe correções de segurança com frequência.
+- O servidor já envia CSP (`frame-ancestors 'none'`), `X-Frame-Options`, `nosniff`,
+  `Referrer-Policy: no-referrer`, tem timeouts de leitura/escrita e só serve os arquivos da web
+  (`index.html`, `js/`, `styles/`, `favicon.svg`).

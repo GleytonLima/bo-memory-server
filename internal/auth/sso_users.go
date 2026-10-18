@@ -18,14 +18,17 @@ type Identity struct {
 	EmployeeID string
 }
 
-var ErrDisabled = errors.New("usuário desativado")
+var (
+	ErrDisabled = errors.New("usuário desativado")
+	ErrNoEmail  = errors.New("o provedor não informou o usuário (sub) ou o e-mail")
+)
 
 // UpsertSSOUser encontra o usuário pelo vínculo (emissor + sub) ou, no 1º login, pelo e-mail (um
 // usuário criado antes pelo admin) — ou cria um novo. Atualiza nome, e-mail e employeeid a cada login.
 func (s *Store) UpsertSSOUser(ctx context.Context, id Identity) (User, error) {
 	email := strings.ToLower(strings.TrimSpace(id.Email))
 	if id.Subject == "" || email == "" {
-		return User{}, errors.New("o provedor não informou o usuário (sub) ou o e-mail")
+		return User{}, ErrNoEmail
 	}
 	name := strings.TrimSpace(id.Name)
 	if name == "" {
@@ -41,6 +44,8 @@ func (s *Store) UpsertSSOUser(ctx context.Context, id Identity) (User, error) {
 	var disabled bool
 	err = tx.QueryRow(ctx, `SELECT id, disabled FROM users WHERE sso_issuer = $1 AND sso_subject = $2`, id.Issuer, id.Subject).Scan(&userID, &disabled)
 	if errors.Is(err, pgx.ErrNoRows) {
+		// conta criada pelo CLI com o mesmo e-mail vira a do SSO (é assim que o 1º admin entra). Seguro só com
+		// e-mail confiável: o fluxo recusa email_verified=false e o emissor deve ser o do tenant (docs/SSO.md)
 		err = tx.QueryRow(ctx, `SELECT id, disabled FROM users WHERE email = $1 AND sso_subject IS NULL`, email).Scan(&userID, &disabled)
 	}
 	switch {

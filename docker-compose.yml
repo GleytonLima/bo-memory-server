@@ -11,7 +11,7 @@ services:
       POSTGRES_PASSWORD: bo
       POSTGRES_DB: bo_memory
     ports:
-      - "${BO_DB_PORT:-55432}:5432"
+      - "127.0.0.1:${BO_DB_PORT:-55432}:5432" # só nesta máquina: a senha é de desenvolvimento
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./docker/initdb:/docker-entrypoint-initdb.d:ro # cria também o banco de testes
@@ -29,7 +29,7 @@ services:
       KEYCLOAK_ADMIN: admin # só teste local
       KEYCLOAK_ADMIN_PASSWORD: admin
     ports:
-      - "${BO_KEYCLOAK_PORT:-8180}:8080"
+      - "127.0.0.1:${BO_KEYCLOAK_PORT:-8180}:8080" # só nesta máquina: admin/admin de teste
     volumes:
       - ./docker/keycloak/realm-bo-memoria.json:/opt/keycloak/data/import/realm-bo-memoria.json:ro
 

@@ -63,7 +63,23 @@ func Handler(authStore *auth.Store, memStore *memory.Store, webDir string, flow 
 	}
 	root.Handle("/v1/", auth.Middleware(authStore, v1))
 	root.Handle("/", web.Handler(webDir))
-	return root
+	return secureHeaders(root)
+}
+
+// secureHeaders: nada de embutir em iframe (clickjacking), MIME sniffing ou Referer para fora; CSP
+// também no cabeçalho (frame-ancestors só vale nele) e HSTS quando chega por HTTPS.
+func secureHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+			h.Set("Strict-Transport-Security", "max-age=31536000")
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {

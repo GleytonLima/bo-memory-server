@@ -20,6 +20,7 @@ func (s *Server) pull(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Workspaces = visible(a, req.Workspaces) // projetos de que não é membro ficam de fora
 	res, err := s.memory.Pull(r.Context(), req)
+	res.Items = allowed(a, res.Items) // memórias de pasta carregam o workspace de origem: só os permitidos
 	if err != nil {
 		fail(w, err)
 		return
@@ -44,7 +45,9 @@ func (s *Server) push(w http.ResponseWriter, r *http.Request) {
 	results := make([]memory.Result, 0, len(req.Changes))
 	for _, c := range req.Changes {
 		id, target := c.ID, (*string)(nil)
-		if c.Memory != nil {
+		if c.Op == "delete" {
+			c.Memory = nil // o delete age sobre c.ID: um "memory" junto não pode servir de álibi no acesso (IDOR)
+		} else if c.Memory != nil {
 			id, target = c.Memory.ID, c.Memory.Workspace
 		}
 		existing, err := s.workspaceOf(r, id)
@@ -75,7 +78,12 @@ func (s *Server) listMemories(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	a, err := s.access(r)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": allowed(a, items)})
 }
 
 func (s *Server) createMemory(w http.ResponseWriter, r *http.Request) {

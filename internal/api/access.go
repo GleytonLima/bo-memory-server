@@ -69,6 +69,17 @@ func (s *Server) allowMemory(w http.ResponseWriter, r *http.Request, id string, 
 	return s.allowAll(w, r, existing, target)
 }
 
+// allowed: só as memórias de workspaces permitidos (as de pasta também têm o workspace de origem).
+func allowed(a memory.Access, items []memory.Memory) []memory.Memory {
+	out := make([]memory.Memory, 0, len(items))
+	for _, m := range items {
+		if a.Can(m.Workspace) {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
 // visible: só os workspaces permitidos (pull e listagens).
 func visible(a memory.Access, workspaces []string) []string {
 	out := []string{}

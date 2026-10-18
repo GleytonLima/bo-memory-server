@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -24,6 +25,8 @@ type env struct {
 	idp   *fakeIdP
 	users *auth.Store
 	srv   *httptest.Server
+
+	dropCookies bool // simula o callback chegando por outro navegador
 }
 
 // setup: banco limpo, provedor falso e o servidor de memória com SSO apontando para ele.
@@ -51,6 +54,9 @@ func setup(t *testing.T) *env {
 func (e *env) login(returnTo string) url.Values {
 	e.t.Helper()
 	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	if !e.dropCookies {
+		client.Jar, _ = cookiejar.New(nil) // o callback exige o cookie posto no /auth/login (mesmo navegador)
+	}
 	next := e.srv.URL + "/auth/login?return=" + url.QueryEscape(returnTo)
 	for i := 0; i < 5; i++ {
 		res, err := client.Get(next)
@@ -64,7 +70,7 @@ func (e *env) login(returnTo string) url.Values {
 		}
 		u, _ := url.Parse(loc)
 		if u.Fragment != "" {
-			frag, _ := url.ParseQuery(u.Fragment)
+			frag, _ := url.ParseQuery(u.EscapedFragment())
 			frag.Set("_path", u.Path)
 			return frag
 		}
@@ -124,12 +130,29 @@ func TestLoginRejectsBadNonceAndUnsafeReturn(t *testing.T) {
 	e := setup(t)
 	e.idp.Claims = map[string]any{"sub": "s1", "email": "x@empresa.com"}
 	e.idp.WrongNonce = true
-	if frag := e.login("/"); frag.Get("sso") != "" || !strings.Contains(frag.Get("sso-error"), "nonce") {
+	if frag := e.login("/"); frag.Get("sso") != "" || frag.Get("sso-error") == "" {
 		t.Fatalf("nonce diferente deveria falhar: %v", frag)
 	}
 	e.idp.WrongNonce = false
-	if frag := e.login("//evil.example/roubo"); frag.Get("_path") != "/" || frag.Get("sso") == "" {
-		t.Fatalf("retorno para outro site deveria virar '/': %v", frag)
+	// "/\t/evil" vira "//evil" no navegador: qualquer caractere fora do simples volta para "/"
+	for _, bad := range []string{"//evil.example/roubo", "/\t/evil.example", "/\\evil.example", "/a//evil", "https://evil.example"} {
+		if frag := e.login(bad); frag.Get("_path") != "/" || frag.Get("sso") == "" {
+			t.Fatalf("retorno %q deveria virar '/': %v", bad, frag)
+		}
+	}
+}
+
+func TestLoginRejectsUnverifiedEmailAndOtherBrowser(t *testing.T) {
+	e := setup(t)
+	e.idp.Claims = map[string]any{"sub": "s9", "email": "z@empresa.com", "email_verified": false}
+	if frag := e.login("/"); frag.Get("sso") != "" || !strings.Contains(frag.Get("sso-error"), "email_verified") {
+		t.Fatalf("e-mail não verificado deveria ser recusado: %v", frag)
+	}
+	// callback sem o cookie do /auth/login (outro navegador: login CSRF / fixação)
+	e.idp.Claims = map[string]any{"sub": "s9", "email": "z@empresa.com", "email_verified": true}
+	e.dropCookies = true
+	if frag := e.login("/"); frag.Get("sso") != "" || !strings.Contains(frag.Get("sso-error"), "outro navegador") {
+		t.Fatalf("callback sem o cookie do login deveria ser recusado: %v", frag)
 	}
 }
 

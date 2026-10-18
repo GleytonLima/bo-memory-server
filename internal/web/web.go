@@ -7,9 +7,18 @@ package web
 import (
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 )
+
+// public: só os arquivos da interface. O resto da pasta (.git/, test/, CLAUDE.md…) não é servido.
+func public(rel string) bool {
+	if strings.Contains(rel, "/.") {
+		return false
+	}
+	return rel == "/index.html" || rel == "/favicon.svg" || strings.HasPrefix(rel, "/js/") || strings.HasPrefix(rel, "/styles/")
+}
 
 func Handler(dir string) http.Handler {
 	index := filepath.Join(dir, "index.html")
@@ -20,8 +29,9 @@ func Handler(dir string) http.Handler {
 			return
 		}
 		w.Header().Set("Cache-Control", "no-cache")
-		clean := filepath.Join(dir, filepath.FromSlash(strings.TrimPrefix(filepath.Clean("/"+r.URL.Path), "/")))
-		if info, err := os.Stat(clean); err == nil && !info.IsDir() {
+		rel := path.Clean("/" + r.URL.Path)
+		clean := filepath.Join(dir, filepath.FromSlash(strings.TrimPrefix(rel, "/")))
+		if info, err := os.Stat(clean); err == nil && !info.IsDir() && public(rel) {
 			files.ServeHTTP(w, r)
 			return
 		}

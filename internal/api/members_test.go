@@ -85,4 +85,30 @@ func TestWorkspaceMembersByEmail(t *testing.T) {
 	if len(all.Items) != 3 || !all.Items[0].Restricted && all.Items[0].Key == "app" {
 		t.Fatalf("admin vê todos: %+v", all.Items)
 	}
+
+	// IDOR no push: delete do secreto "disfarçado" com um memory de workspace aberto junto
+	var trick struct{ Results []memory.Result }
+	ana.do("POST", "/v1/sync/push", map[string]any{"changes": []any{map[string]any{
+		"op": "delete", "id": inSecret.ID, "baseRev": 0, "memory": note("aberto", "álibi"),
+	}}}, &trick)
+	if len(trick.Results) != 1 || trick.Results[0].Status != "error" || trick.Results[0].Server != nil {
+		t.Fatalf("delete de memória do secreto deveria ser recusado (sem devolver o conteúdo): %+v", trick.Results)
+	}
+	var secret struct{ Items []memory.Memory }
+	adm.do("GET", "/v1/memories?workspace=secreto", nil, &secret)
+	if len(secret.Items) != 1 || secret.Items[0].Text != "segredo" {
+		t.Fatalf("a memória do secreto continua lá: %+v", secret.Items)
+	}
+
+	// memória de pasta criada no secreto: quem conhece o remote não lê sem ser membro
+	adm.do("POST", "/v1/memories", map[string]any{"kind": "note", "scope": "folder", "folder": "github.com/empresa/repo", "workspace": "secreto", "text": "pasta secreta"}, nil)
+	var byFolder struct{ Items []memory.Memory }
+	ana.do("GET", "/v1/memories?folder=github.com/empresa/repo", nil, &byFolder)
+	var pulledFolder memory.PullResponse
+	ana.do("POST", "/v1/sync/pull", map[string]any{"since": 0, "folders": []string{"github.com/empresa/repo"}}, &pulledFolder)
+	for _, m := range append(byFolder.Items, pulledFolder.Items...) {
+		if m.Text == "pasta secreta" {
+			t.Fatalf("memória de pasta do secreto vazou para quem não é membro")
+		}
+	}
 }

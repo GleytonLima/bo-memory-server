@@ -67,7 +67,8 @@ func main() {
 }
 
 func serve(ctx context.Context, cfg config.Config, h http.Handler) {
-	srv := &http.Server{Addr: cfg.Addr, Handler: h, ReadHeaderTimeout: 10 * time.Second}
+	// timeouts: conexões lentas (cabeçalho ou corpo) não seguram o servidor
+	srv := &http.Server{Addr: cfg.Addr, Handler: h, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 120 * time.Second}
 	go func() {
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)

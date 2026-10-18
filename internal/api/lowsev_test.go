@@ -12,37 +12,46 @@ import (
 )
 
 // Itens de severidade baixa da revisão OWASP: busca só de símbolos, curinga no *@dominio, regra de
-// acesso dentro da transação e mensagens de erro sem texto cru do banco.
-func TestLowSeverityHardening(t *testing.T) {
+// acesso dentro da transação, limites por pedido e mensagens de erro sem texto cru do banco.
+
+// lowEnv: servidor com um admin e a Ana (sem acesso ao workspace "cofre", que é restrito).
+func lowEnv(t *testing.T) (adm, ana client, store *memory.Store) {
 	ctx := context.Background()
 	pool := testdb.Open(t)
 	users := auth.NewStore(pool)
-	store := memory.NewStore(pool)
+	store = memory.NewStore(pool)
 	mk := func(name, email string, admin bool) client {
 		u, _ := users.CreateUser(ctx, name, email, admin)
 		tok, _, _ := users.CreateToken(ctx, u.ID, "cli")
 		return client{t: t, token: tok}
 	}
 	srv := httptest.NewServer(api.Handler(users, store, t.TempDir(), nil))
-	defer srv.Close()
-	adm, ana := mk("Admin", "admin@empresa.com", true), mk("Ana", "ana@empresa.com", false)
+	t.Cleanup(srv.Close)
+	adm, ana = mk("Admin", "admin@empresa.com", true), mk("Ana", "ana@empresa.com", false)
 	adm.base, ana.base = srv.URL, srv.URL
+	// "*@%.com" não é curinga: o % é literal (antes virava LIKE e casava qualquer .com)
+	adm.do("PUT", "/v1/workspaces/cofre/members", map[string]any{"members": []string{"*@%.com"}}, nil)
+	return adm, ana, store
+}
 
+func TestSearchSymbolsAndDomainWildcard(t *testing.T) {
+	adm, ana, _ := lowEnv(t)
 	// busca com termo só de símbolos não vira 500 (to_tsquery("-:*") é erro de sintaxe)
 	for _, q := range []string{"-", "_", "--", "a-"} {
 		if code := ana.do("GET", "/v1/memories?q="+q, nil, nil); code != 200 {
 			t.Fatalf("busca %q deveria dar 200: %d", q, code)
 		}
 	}
-
-	// "*@%.com" não é curinga: o % é literal (antes virava LIKE e casava qualquer .com)
-	adm.do("PUT", "/v1/workspaces/cofre/members", map[string]any{"members": []string{"*@%.com"}}, nil)
 	adm.do("POST", "/v1/memories", map[string]any{"kind": "note", "scope": "project", "workspace": "cofre", "text": "do cofre"}, nil)
 	if code := ana.do("GET", "/v1/memories?workspace=cofre", nil, nil); code != 403 {
 		t.Fatalf("*@%%.com não deveria casar ana@empresa.com: %d", code)
 	}
+}
 
-	// regra de acesso conferida dentro da transação (a memória pode mudar de workspace no meio)
+// Regra de acesso conferida dentro da transação (a memória pode mudar de workspace no meio).
+func TestGuardInsideTransaction(t *testing.T) {
+	ctx := context.Background()
+	_, _, store := lowEnv(t)
 	created := store.Upsert(ctx, memory.Memory{Kind: "note", Scope: "project", Workspace: ptr("cofre"), Text: "x"}, 0, "")
 	deny := memory.WithGuard(ctx, func(ws *string) bool { return ws == nil || *ws != "cofre" })
 	if r := store.Upsert(deny, memory.Memory{ID: created.ID, Kind: "note", Scope: "project", Workspace: ptr("aberto"), Text: "y"}, created.Rev, ""); r.Status != "error" || r.Server != nil {
@@ -51,8 +60,10 @@ func TestLowSeverityHardening(t *testing.T) {
 	if r := store.Delete(deny, created.ID, created.Rev, ""); r.Status != "error" {
 		t.Fatalf("delete sem acesso dentro da transação deveria falhar: %+v", r)
 	}
+}
 
-	// no máximo 500 mudanças por envio
+func TestRequestLimitsAndCleanErrors(t *testing.T) {
+	adm, ana, _ := lowEnv(t)
 	big := make([]any, 501)
 	for i := range big {
 		big[i] = map[string]any{"op": "delete", "id": "x"}
@@ -60,7 +71,12 @@ func TestLowSeverityHardening(t *testing.T) {
 	if code := ana.do("POST", "/v1/sync/push", map[string]any{"changes": big}, nil); code != 400 {
 		t.Fatalf("push com 501 mudanças deveria dar 400: %d", code)
 	}
-	// erros sem texto cru do banco
+	if code := ana.do("POST", "/v1/memories/review", map[string]any{"ids": make([]string, 501), "reason": "x"}, nil); code != 400 {
+		t.Fatalf("marcar 501 memórias deveria dar 400: %d", code)
+	}
+	if code, msg := ana.raw("POST", "/v1/sync/push", "{quebrado"); code != 400 || msg != "JSON inválido." {
+		t.Fatalf("JSON quebrado: %d %q", code, msg)
+	}
 	var e struct{ Error string }
 	if code := adm.do("DELETE", "/v1/tokens/nao-e-uuid", nil, &e); code != 404 || e.Error != "token não encontrado" {
 		t.Fatalf("revogar id malformado: %d %q", code, e.Error)

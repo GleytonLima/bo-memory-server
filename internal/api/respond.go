@@ -29,8 +29,6 @@ func fail(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, memory.ErrNotFound):
 		writeError(w, http.StatusNotFound, err.Error())
-	case errors.Is(err, memory.ErrForbidden):
-		writeError(w, http.StatusForbidden, err.Error())
 	default:
 		log.Printf("erro interno: %v", err)
 		writeError(w, http.StatusInternalServerError, "Erro interno no servidor.")

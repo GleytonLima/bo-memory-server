@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"bo-memory-server/internal/api"
@@ -39,6 +40,21 @@ func (c client) do(method, path string, body any, out any) int {
 		_ = json.NewDecoder(res.Body).Decode(out)
 	}
 	return res.StatusCode
+}
+
+// raw envia um corpo qualquer (ex.: JSON quebrado) e devolve o status e a mensagem de erro.
+func (c client) raw(method, path, body string) (int, string) {
+	c.t.Helper()
+	req, _ := http.NewRequest(method, c.base+path, strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var e struct{ Error string }
+	_ = json.NewDecoder(res.Body).Decode(&e)
+	return res.StatusCode, e.Error
 }
 
 func TestAPIFlow(t *testing.T) {

@@ -32,4 +32,17 @@ func TestLimiter(t *testing.T) {
 	if byIP(httptest.NewRequest("GET", "/", nil)) == "" {
 		t.Fatal("byIP sem endereço")
 	}
+	r := httptest.NewRequest("GET", "/", nil)
+	r.RemoteAddr = "sem-porta"
+	if byIP(r) != "sem-porta" || byToken(r) != "ip:sem-porta" {
+		t.Fatalf("sem porta/token: %q %q", byIP(r), byToken(r))
+	}
+	// muitas chaves: o mapa recomeça em vez de crescer sem limite
+	big := newLimiter(60, 1)
+	for i := 0; i <= 10001; i++ {
+		big.allow(string(rune(i)) + "k")
+	}
+	if len(big.buckets) > 10001 {
+		t.Fatalf("mapa de baldes cresceu sem limite: %d", len(big.buckets))
+	}
 }
